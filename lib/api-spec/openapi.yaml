@@ -1,0 +1,525 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: auth
+    description: Role-based authentication
+  - name: dashboard
+    description: Client dashboard
+  - name: laws
+    description: Laws and judgments
+  - name: lawyers
+    description: Lawyer directory
+  - name: cases
+    description: Legal cases
+  - name: appointments
+    description: Appointments
+  - name: documents
+    description: Case documents
+  - name: payments
+    description: Payments
+  - name: assistant
+    description: AI informational assistant
+  - name: news
+    description: Legal news
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+      security: []
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Sign in with a role
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AuthLoginBody" }
+      responses:
+        "200":
+          description: Authenticated user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthResponse" }
+  /auth/signup:
+    post:
+      operationId: signup
+      tags: [auth]
+      summary: Create a client or lawyer account
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AuthSignupBody" }
+      responses:
+        "201":
+          description: Created account
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthResponse" }
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get the signed-in user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthUser" }
+  /dashboard:
+    get:
+      operationId: getDashboard
+      tags: [dashboard]
+      summary: Get client dashboard
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dashboard"
+  /laws:
+    get:
+      operationId: listLaws
+      tags: [laws]
+      summary: Search laws
+      parameters:
+        - { $ref: "#/components/parameters/Search" }
+        - { $ref: "#/components/parameters/Category" }
+      responses:
+        "200":
+          description: Matching laws
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Law" }
+  /judgments:
+    get:
+      operationId: listJudgments
+      tags: [laws]
+      summary: Search judgments
+      parameters:
+        - { $ref: "#/components/parameters/Search" }
+        - { $ref: "#/components/parameters/Court" }
+        - { $ref: "#/components/parameters/Year" }
+      responses:
+        "200":
+          description: Matching judgments
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Judgment" }
+  /lawyers:
+    get:
+      operationId: listLawyers
+      tags: [lawyers]
+      summary: Browse verified lawyers
+      parameters:
+        - { $ref: "#/components/parameters/Search" }
+        - { $ref: "#/components/parameters/Category" }
+      responses:
+        "200":
+          description: Verified lawyers
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Lawyer" }
+  /cases:
+    get:
+      operationId: listCases
+      tags: [cases]
+      summary: List client cases
+      responses:
+        "200":
+          description: Client cases
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Case" }
+    post:
+      operationId: createCase
+      tags: [cases]
+      summary: Create a case
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CaseInput" }
+      responses:
+        "201":
+          description: Created case
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Case" }
+  /cases/{id}:
+    patch:
+      operationId: updateCase
+      tags: [cases]
+      summary: Update a case
+      parameters:
+        - { $ref: "#/components/parameters/Id" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CaseUpdate" }
+      responses:
+        "200":
+          description: Updated case
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Case" }
+  /appointments:
+    get:
+      operationId: listAppointments
+      tags: [appointments]
+      summary: List appointments
+      responses:
+        "200":
+          description: Appointments
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Appointment" }
+    post:
+      operationId: createAppointment
+      tags: [appointments]
+      summary: Book an appointment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AppointmentInput" }
+      responses:
+        "201":
+          description: Created appointment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Appointment" }
+  /documents:
+    get:
+      operationId: listDocuments
+      tags: [documents]
+      summary: List documents
+      responses:
+        "200":
+          description: Documents
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Document" }
+    post:
+      operationId: createDocument
+      tags: [documents]
+      summary: Add document metadata
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DocumentInput" }
+      responses:
+        "201":
+          description: Created document
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Document" }
+  /payments:
+    get:
+      operationId: listPayments
+      tags: [payments]
+      summary: List payments
+      responses:
+        "200":
+          description: Payments
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Payment" }
+  /assistant/ask:
+    post:
+      operationId: askAssistant
+      tags: [assistant]
+      summary: Ask the informational legal assistant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AssistantQuestion" }
+      responses:
+        "200":
+          description: Informational answer
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssistantAnswer" }
+  /news:
+    get:
+      operationId: listNews
+      tags: [news]
+      summary: List latest legal news
+      responses:
+        "200":
+          description: Latest legal news
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/NewsItem" }
+components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: number }
+    Search:
+      name: search
+      in: query
+      required: false
+      schema: { type: string }
+    Category:
+      name: category
+      in: query
+      required: false
+      schema: { type: string }
+    Court:
+      name: court
+      in: query
+      required: false
+      schema: { type: string }
+    Year:
+      name: year
+      in: query
+      required: false
+      schema: { type: number }
+  schemas:
+    AuthRole:
+      type: string
+      enum: [admin, client, lawyer]
+    AuthSignupRole:
+      type: string
+      enum: [client, lawyer]
+    AuthUser:
+      type: object
+      required: [id, fullName, email, role]
+      properties:
+        id: { type: number }
+        fullName: { type: string }
+        email: { type: string }
+        role: { $ref: "#/components/schemas/AuthRole" }
+    AuthLoginBody:
+      type: object
+      required: [role, email, password]
+      properties:
+        role: { $ref: "#/components/schemas/AuthRole" }
+        email: { type: string, minLength: 3 }
+        password: { type: string, minLength: 8 }
+    AuthSignupBody:
+      type: object
+      required: [role, fullName, email, password]
+      properties:
+        role: { $ref: "#/components/schemas/AuthSignupRole" }
+        fullName: { type: string, minLength: 2 }
+        email: { type: string, minLength: 3 }
+        password: { type: string, minLength: 8 }
+    AuthResponse:
+      type: object
+      required: [token, user]
+      properties:
+        token: { type: string }
+        user: { $ref: "#/components/schemas/AuthUser" }
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    Dashboard:
+      type: object
+      required: [userName, openCases, upcomingAppointments, documents, unreadNotifications, recentActivity]
+      properties:
+        userName: { type: string }
+        openCases: { type: number }
+        upcomingAppointments: { type: number }
+        documents: { type: number }
+        unreadNotifications: { type: number }
+        recentActivity:
+          type: array
+          items: { $ref: "#/components/schemas/Activity" }
+    Activity:
+      type: object
+      required: [id, title, detail, timestamp, type]
+      properties:
+        id: { type: number }
+        title: { type: string }
+        detail: { type: string }
+        timestamp: { type: string }
+        type: { type: string }
+    Law:
+      type: object
+      required: [id, title, category, summary, sections, updatedAt]
+      properties:
+        id: { type: number }
+        title: { type: string }
+        category: { type: string }
+        summary: { type: string }
+        sections: { type: string }
+        updatedAt: { type: string }
+    Judgment:
+      type: object
+      required: [id, title, court, year, citation, summary, category]
+      properties:
+        id: { type: number }
+        title: { type: string }
+        court: { type: string }
+        year: { type: number }
+        citation: { type: string }
+        summary: { type: string }
+        category: { type: string }
+    Lawyer:
+      type: object
+      required: [id, name, initials, specialization, experience, location, rating, reviews, fee, verified, availability]
+      properties:
+        id: { type: number }
+        name: { type: string }
+        initials: { type: string }
+        specialization: { type: string }
+        experience: { type: number }
+        location: { type: string }
+        rating: { type: number }
+        reviews: { type: number }
+        fee: { type: number }
+        verified: { type: boolean }
+        availability: { type: string }
+    Case:
+      type: object
+      required: [id, title, category, oppositeParty, status, statusLabel, nextStep, updatedAt, progress]
+      properties:
+        id: { type: number }
+        title: { type: string }
+        category: { type: string }
+        oppositeParty: { type: string }
+        status: { type: string }
+        statusLabel: { type: string }
+        nextStep: { type: string }
+        updatedAt: { type: string }
+        progress: { type: number }
+        lawyerName: { type: ["string", "null"] }
+    CaseInput:
+      type: object
+      required: [title, category, oppositeParty, description]
+      properties:
+        title: { type: string, minLength: 1 }
+        category: { type: string, minLength: 1 }
+        oppositeParty: { type: string, minLength: 1 }
+        description: { type: string, minLength: 1 }
+        preferredConsultation: { type: ["string", "null"] }
+    CaseUpdate:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string }
+    Appointment:
+      type: object
+      required: [id, lawyerName, lawyerInitials, type, date, time, status, fee]
+      properties:
+        id: { type: number }
+        lawyerName: { type: string }
+        lawyerInitials: { type: string }
+        type: { type: string }
+        date: { type: string }
+        time: { type: string }
+        status: { type: string }
+        fee: { type: number }
+    AppointmentInput:
+      type: object
+      required: [lawyerId, type, date, time]
+      properties:
+        lawyerId: { type: number }
+        type: { type: string }
+        date: { type: string }
+        time: { type: string }
+    Document:
+      type: object
+      required: [id, name, type, size, uploadedAt, caseTitle]
+      properties:
+        id: { type: number }
+        name: { type: string }
+        type: { type: string }
+        size: { type: string }
+        uploadedAt: { type: string }
+        caseTitle: { type: string }
+    DocumentInput:
+      type: object
+      required: [name, type, size, caseTitle]
+      properties:
+        name: { type: string }
+        type: { type: string }
+        size: { type: string }
+        caseTitle: { type: string }
+    Payment:
+      type: object
+      required: [id, description, date, amount, status, receipt]
+      properties:
+        id: { type: number }
+        description: { type: string }
+        date: { type: string }
+        amount: { type: number }
+        status: { type: string }
+        receipt: { type: string }
+    AssistantQuestion:
+      type: object
+      required: [question]
+      properties:
+        question: { type: string, minLength: 1 }
+    AssistantAnswer:
+      type: object
+      required: [answer, sources, disclaimer]
+      properties:
+        answer: { type: string }
+        sources:
+          type: array
+          items: { type: string }
+        disclaimer: { type: string }
+    NewsItem:
+      type: object
+      required: [id, title, category, date, readTime, summary]
+      properties:
+        id: { type: number }
+        title: { type: string }
+        category: { type: string }
+        date: { type: string }
+        readTime: { type: string }
+        summary: { type: string }
+
