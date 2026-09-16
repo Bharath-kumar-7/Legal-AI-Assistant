@@ -140,3 +140,6 @@ venv/
 
 uploads/
 outputs/
+USER_MANUAL.pdf
+*.pdf
+!attached_assets/*.pdf
