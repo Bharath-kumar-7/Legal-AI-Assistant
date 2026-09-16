@@ -6,10 +6,16 @@ export type UserRole = "admin" | "client" | "lawyer";
 
 const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 7;
 
+// ── Mock users for offline / no-DB mode ──────────────────────────────────────
+const MOCK_USERS: User[] = [
+  { id: 1,   fullName: "Nyaya Administrator", email: "admin@nyaya.in",  passwordHash: "mock", role: "admin",  createdAt: new Date() },
+  { id: 101, fullName: "Rahul Sharma",        email: "client@nyaya.in", passwordHash: "mock", role: "client", createdAt: new Date() },
+  { id: 201, fullName: "Adv. Rohan Iyer",     email: "lawyer@nyaya.in", passwordHash: "mock", role: "lawyer", createdAt: new Date() },
+];
+
 function secret(): string {
-  const value = process.env.SESSION_SECRET;
-  if (!value) throw new Error("SESSION_SECRET must be configured");
-  return value;
+  // Use env var if set, otherwise fall back to a dev-only default
+  return process.env.SESSION_SECRET ?? "nyaya-dev-secret-key-change-in-production";
 }
 
 function base64Url(value: string | Buffer): string {
@@ -23,6 +29,7 @@ function hashPassword(password: string): string {
 }
 
 export function verifyPassword(password: string, stored: string): boolean {
+  if (stored === "mock") return true; // offline mode accepts any password
   const [, salt, expected] = stored.split("$");
   if (!salt || !expected) return false;
   const actual = scryptSync(password, salt, 64);
@@ -68,6 +75,7 @@ export function verifyToken(token: string): { id: number; email: string; role: U
 }
 
 export async function ensureAdminAccount(): Promise<void> {
+  if (!db) return; // offline mode — skip
   const existingAdmin = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "admin")).limit(1);
   if (existingAdmin.length) return;
   const email = process.env.NYAYA_ADMIN_EMAIL?.trim().toLowerCase();
@@ -84,27 +92,71 @@ export async function ensureAdminAccount(): Promise<void> {
   });
 }
 
-export async function authenticate(email: string, password: string, role: UserRole): Promise<{ token: string; user: PublicUser } | null> {
-  const [user] = await db.select().from(usersTable).where(and(eq(usersTable.email, email.trim().toLowerCase()), eq(usersTable.role, role))).limit(1);
+export async function authenticate(
+  email: string,
+  password: string,
+  role: UserRole,
+): Promise<{ token: string; user: PublicUser } | null> {
+  // Offline / no-DB mode — accept any credentials and return a mock user
+  if (!db) {
+    const mock = MOCK_USERS.find(u => u.role === role);
+    if (!mock) return null;
+    const fakeUser = { ...mock, email: email.trim().toLowerCase() };
+    return { token: signToken(fakeUser), user: publicUser(fakeUser) };
+  }
+  const [user] = await db
+    .select()
+    .from(usersTable)
+    .where(and(eq(usersTable.email, email.trim().toLowerCase()), eq(usersTable.role, role)))
+    .limit(1);
   if (!user || !verifyPassword(password, user.passwordHash)) return null;
   return { token: signToken(user), user: publicUser(user) };
 }
 
 export async function getUserById(id: number): Promise<PublicUser | null> {
+  if (!db) {
+    const mock = MOCK_USERS.find(u => u.id === id);
+    return mock ? publicUser(mock) : null;
+  }
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, id)).limit(1);
   return user ? publicUser(user) : null;
 }
 
-export async function registerUser(fullName: string, email: string, password: string, role: Exclude<UserRole, "admin">): Promise<{ token: string; user: PublicUser }> {
+export async function registerUser(
+  fullName: string,
+  email: string,
+  password: string,
+  role: Exclude<UserRole, "admin">,
+): Promise<{ token: string; user: PublicUser }> {
+  if (!db) {
+    // Offline mode — create an in-memory mock user
+    const newUser: User = {
+      id: Date.now(),
+      fullName: fullName.trim(),
+      email: email.trim().toLowerCase(),
+      passwordHash: "mock",
+      role,
+      createdAt: new Date(),
+    };
+    MOCK_USERS.push(newUser);
+    return { token: signToken(newUser), user: publicUser(newUser) };
+  }
   const normalizedEmail = email.trim().toLowerCase();
-  const existing = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, normalizedEmail)).limit(1);
+  const existing = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(eq(usersTable.email, normalizedEmail))
+    .limit(1);
   if (existing.length) throw new Error("An account with this email already exists");
-  const [user] = await db.insert(usersTable).values({
-    fullName: fullName.trim(),
-    email: normalizedEmail,
-    passwordHash: hashPassword(password),
-    role,
-  }).returning();
+  const [user] = await db
+    .insert(usersTable)
+    .values({
+      fullName: fullName.trim(),
+      email: normalizedEmail,
+      passwordHash: hashPassword(password),
+      role,
+    })
+    .returning();
   return { token: signToken(user), user: publicUser(user) };
 }
 

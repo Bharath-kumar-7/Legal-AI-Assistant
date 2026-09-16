@@ -24,11 +24,26 @@ import {
   UpdateCaseParams,
   UpdateCaseResponse,
 } from "@workspace/api-zod";
+import { eq, and, desc } from "drizzle-orm";
+import {
+  db,
+  casesTable,
+  caseRequestsTable,
+  caseDocumentsTable,
+  appointmentsTable,
+  paymentsTable,
+  notificationsTable,
+  lawyerProfilesTable,
+  usersTable,
+  auditLogsTable,
+} from "@workspace/db";
 import { requireAuth } from "../middlewares/auth";
+import { notify } from "../lib/notifications";
 
 const router: IRouter = Router();
 router.use(requireAuth);
 
+// ─── Reference Knowledge Base (Statutory Laws & Precedents) ───────────────────
 const laws = [
   {
     id: 1,
@@ -102,169 +117,6 @@ const judgments = [
   },
 ];
 
-const lawyers = [
-  {
-    id: 1,
-    name: "Ananya Mehta",
-    initials: "AM",
-    specialization: "Family & Matrimonial Law",
-    experience: 12,
-    location: "New Delhi",
-    rating: 4.9,
-    reviews: 124,
-    fee: 1800,
-    verified: true,
-    availability: "Available today",
-  },
-  {
-    id: 2,
-    name: "Rohan Iyer",
-    initials: "RI",
-    specialization: "Property & Civil Law",
-    experience: 9,
-    location: "Bengaluru",
-    rating: 4.8,
-    reviews: 96,
-    fee: 1500,
-    verified: true,
-    availability: "Next available tomorrow",
-  },
-  {
-    id: 3,
-    name: "Priya Sharma",
-    initials: "PS",
-    specialization: "Consumer & Commercial Law",
-    experience: 15,
-    location: "Mumbai",
-    rating: 4.9,
-    reviews: 182,
-    fee: 2200,
-    verified: true,
-    availability: "Available today",
-  },
-  {
-    id: 4,
-    name: "Arjun Nair",
-    initials: "AN",
-    specialization: "Cyber & Technology Law",
-    experience: 8,
-    location: "Hyderabad",
-    rating: 4.7,
-    reviews: 71,
-    fee: 1600,
-    verified: true,
-    availability: "Next available Friday",
-  },
-];
-
-let cases = [
-  {
-    id: 1,
-    title: "Property boundary dispute",
-    category: "Property",
-    oppositeParty: "Ramesh Kumar",
-    status: "under-review",
-    statusLabel: "Under review",
-    nextStep: "Lawyer review due 18 Aug",
-    updatedAt: "Updated 2 hours ago",
-    progress: 48,
-    lawyerName: "Rohan Iyer",
-  },
-  {
-    id: 2,
-    title: "Online purchase refund",
-    category: "Consumer",
-    oppositeParty: "BrightCart India",
-    status: "consultation",
-    statusLabel: "Consultation",
-    nextStep: "Video consultation on 21 Aug",
-    updatedAt: "Updated yesterday",
-    progress: 31,
-    lawyerName: "Priya Sharma",
-  },
-  {
-    id: 3,
-    title: "Employment agreement review",
-    category: "Labour",
-    oppositeParty: "Northstar Technologies",
-    status: "documents-uploaded",
-    statusLabel: "Documents uploaded",
-    nextStep: "Upload signed offer letter",
-    updatedAt: "Updated 3 days ago",
-    progress: 22,
-    lawyerName: null,
-  },
-];
-
-let appointments = [
-  {
-    id: 1,
-    lawyerName: "Ananya Mehta",
-    lawyerInitials: "AM",
-    type: "Video consultation",
-    date: "21 Aug 2026",
-    time: "11:30 AM",
-    status: "Confirmed",
-    fee: 1800,
-  },
-  {
-    id: 2,
-    lawyerName: "Rohan Iyer",
-    lawyerInitials: "RI",
-    type: "Office visit",
-    date: "28 Aug 2026",
-    time: "4:00 PM",
-    status: "Pending payment",
-    fee: 1500,
-  },
-];
-
-let documents = [
-  {
-    id: 1,
-    name: "Property deed — survey 104",
-    type: "PDF",
-    size: "2.4 MB",
-    uploadedAt: "12 Aug 2026",
-    caseTitle: "Property boundary dispute",
-  },
-  {
-    id: 2,
-    name: "Consumer complaint draft",
-    type: "DOCX",
-    size: "840 KB",
-    uploadedAt: "08 Aug 2026",
-    caseTitle: "Online purchase refund",
-  },
-  {
-    id: 3,
-    name: "Employment offer letter",
-    type: "PDF",
-    size: "1.1 MB",
-    uploadedAt: "05 Aug 2026",
-    caseTitle: "Employment agreement review",
-  },
-];
-
-const payments = [
-  {
-    id: 1,
-    description: "Consultation with Ananya Mehta",
-    date: "21 Aug 2026",
-    amount: 1800,
-    status: "Paid",
-    receipt: "NYA-2026-0812",
-  },
-  {
-    id: 2,
-    description: "Consultation with Priya Sharma",
-    date: "04 Aug 2026",
-    amount: 2200,
-    status: "Paid",
-    receipt: "NYA-2026-0804",
-  },
-];
-
 const news = [
   {
     id: 1,
@@ -295,22 +147,60 @@ const news = [
 const matches = (value: string, query?: string) =>
   !query || value.toLowerCase().includes(query.toLowerCase());
 
-router.get("/dashboard", (_req, res) => {
-  const data = {
-    userName: "Bharath",
-    openCases: cases.length,
-    upcomingAppointments: appointments.filter((item) => item.status !== "Completed").length,
-    documents: documents.length,
-    unreadNotifications: 3,
-    recentActivity: [
-      { id: 1, title: "Case update", detail: "Property boundary dispute moved to lawyer review", timestamp: "2 hours ago", type: "case" },
-      { id: 2, title: "Document added", detail: "Property deed — survey 104 is ready for review", timestamp: "Yesterday", type: "document" },
-      { id: 3, title: "Appointment confirmed", detail: "Video consultation with Ananya Mehta", timestamp: "Yesterday", type: "appointment" },
-    ],
-  };
-  res.json(GetDashboardResponse.parse(data));
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+router.get("/dashboard", async (req, res): Promise<void> => {
+  try {
+    const userId = req.auth!.id;
+    if (!db) {
+      res.json(
+        GetDashboardResponse.parse({
+          userName: "Bharath",
+          openCases: 3,
+          upcomingAppointments: 2,
+          documents: 3,
+          unreadNotifications: 2,
+          recentActivity: [
+            { id: 1, title: "Case update", detail: "Property boundary dispute moved to lawyer review", timestamp: "2 hours ago", type: "case" },
+            { id: 2, title: "Document added", detail: "Property deed — survey 104 is ready for review", timestamp: "Yesterday", type: "document" },
+            { id: 3, title: "Appointment confirmed", detail: "Video consultation with Adv. Rohan Iyer", timestamp: "Yesterday", type: "appointment" },
+          ],
+        }),
+      );
+      return;
+    }
+
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+    const cases = await db.select().from(casesTable).where(eq(casesTable.clientId, userId));
+    const openCases = cases.filter((c) => c.status !== "RESOLVED" && c.status !== "CLOSED");
+
+    const appts = await db.select().from(appointmentsTable).where(eq(appointmentsTable.clientId, userId));
+    const upcoming = appts.filter((a) => a.status === "PENDING" || a.status === "CONFIRMED");
+
+    const docs = await db.select().from(caseDocumentsTable).where(eq(caseDocumentsTable.uploadedByUserId, userId));
+    const notifs = await db
+      .select()
+      .from(notificationsTable)
+      .where(and(eq(notificationsTable.userId, userId), eq(notificationsTable.isRead, false)));
+
+    const data = {
+      userName: user?.fullName || "Client",
+      openCases: openCases.length,
+      upcomingAppointments: upcoming.length,
+      documents: docs.length,
+      unreadNotifications: notifs.length,
+      recentActivity: [
+        { id: 1, title: "Welcome", detail: "Nyaya legal platform active", timestamp: "Just now", type: "case" },
+      ],
+    };
+
+    res.json(GetDashboardResponse.parse(data));
+  } catch (error) {
+    console.error("Error in GET /dashboard:", error);
+    res.status(500).json({ error: "Failed to load dashboard" });
+  }
 });
 
+// ─── Legal Library & News ─────────────────────────────────────────────────────
 router.get("/laws", (req, res) => {
   const parsed = ListLawsQueryParams.safeParse(req.query);
   const query = parsed.success ? parsed.data : {};
@@ -325,113 +215,495 @@ router.get("/judgments", (req, res) => {
   res.json(ListJudgmentsResponse.parse(result));
 });
 
-router.get("/lawyers", (req, res) => {
-  const parsed = ListLawyersQueryParams.safeParse(req.query);
-  const query = parsed.success ? parsed.data : {};
-  const result = lawyers.filter((lawyer) => matches(`${lawyer.name} ${lawyer.specialization} ${lawyer.location}`, query.search) && matches(lawyer.specialization, query.category));
-  res.json(ListLawyersResponse.parse(result));
+router.get("/news", (_req, res) => {
+  res.json(ListNewsResponse.parse(news));
 });
 
-router.get("/cases", (_req, res) => {
-  res.json(ListCasesResponse.parse(cases));
-});
+// ─── Find a Lawyer (Real Database + Profiles) ─────────────────────────────────
+router.get("/lawyers", async (req, res): Promise<void> => {
+  try {
+    const parsed = ListLawyersQueryParams.safeParse(req.query);
+    const query = parsed.success ? parsed.data : {};
 
-router.post("/cases", (req, res) => {
-  const parsed = CreateCaseBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
+    if (!db) {
+      const fallbackLawyers = [
+        {
+          id: 1,
+          name: "Adv. Rohan Iyer",
+          initials: "RI",
+          specialization: "Property & Civil Law",
+          experience: 12,
+          location: "Mumbai, Maharashtra",
+          rating: 4.9,
+          reviews: 124,
+          fee: 1800,
+          verified: true,
+          availability: "Available today",
+        },
+      ];
+      res.json(ListLawyersResponse.parse(fallbackLawyers));
+      return;
+    }
+
+    const lawyerUsers = await db.select().from(usersTable).where(eq(usersTable.role, "lawyer"));
+    const profiles = await db.select().from(lawyerProfilesTable);
+
+    const result = lawyerUsers.map((u) => {
+      const prof = profiles.find((p) => p.userId === u.id);
+      const practice = prof ? JSON.parse(prof.practiceAreas || "[]") : ["Civil Law"];
+      const spec = practice[0] || "General Practice";
+
+      return {
+        id: u.id,
+        name: u.fullName.startsWith("Adv.") ? u.fullName : `Adv. ${u.fullName}`,
+        initials: u.fullName
+          .split(" ")
+          .map((w) => w[0])
+          .slice(0, 2)
+          .join("")
+          .toUpperCase(),
+        specialization: spec,
+        experience: prof?.yearsOfExperience || 8,
+        location: prof?.location || "Mumbai, India",
+        rating: 4.8,
+        reviews: 42,
+        fee: 1500,
+        verified: prof ? prof.verificationStatus === "VERIFIED" : true,
+        availability: "Available today",
+      };
+    });
+
+    const filtered = result.filter(
+      (l) =>
+        matches(`${l.name} ${l.specialization} ${l.location}`, query.search) &&
+        matches(l.specialization, query.category),
+    );
+
+    res.json(ListLawyersResponse.parse(filtered));
+  } catch (error) {
+    console.error("Error in GET /lawyers:", error);
+    res.status(500).json({ error: "Failed to fetch lawyers" });
   }
-  const item = {
-    id: Math.max(...cases.map((entry) => entry.id), 0) + 1,
-    title: parsed.data.title,
-    category: parsed.data.category,
-    oppositeParty: parsed.data.oppositeParty,
-    status: "created",
-    statusLabel: "Created",
-    nextStep: "Choose a lawyer for your consultation",
-    updatedAt: "Created just now",
-    progress: 8,
-    lawyerName: null,
-  };
-  cases = [item, ...cases];
-  res.status(201).json(CreateCaseResponse.parse(item));
 });
 
-router.patch("/cases/:id", (req, res) => {
-  const params = UpdateCaseParams.safeParse(req.params);
-  const body = UpdateCaseBody.safeParse(req.body);
-  if (!params.success || !body.success) {
-    res.status(400).json({ error: "Invalid case update" });
-    return;
+// ─── Cases (Client) ───────────────────────────────────────────────────────────
+router.get("/cases", async (req, res): Promise<void> => {
+  try {
+    const userId = req.auth!.id;
+    if (!db) {
+      res.json(ListCasesResponse.parse([]));
+      return;
+    }
+
+    const cases = await db
+      .select()
+      .from(casesTable)
+      .where(eq(casesTable.clientId, userId))
+      .orderBy(desc(casesTable.createdAt));
+
+    const users = await db.select().from(usersTable);
+
+    const result = cases.map((c) => {
+      const lawyer = c.lawyerId ? users.find((u) => u.id === c.lawyerId) : null;
+      return {
+        id: c.id,
+        title: c.title,
+        category: c.category,
+        oppositeParty: c.oppositeParty || "",
+        status: c.status.toLowerCase().replace(/_/g, "-"),
+        statusLabel: c.status.replace(/_/g, " "),
+        nextStep: c.nextStep || "Reviewing matter details",
+        updatedAt: c.updatedAt.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
+        progress: c.progress,
+        lawyerName: lawyer ? lawyer.fullName : null,
+      };
+    });
+
+    res.json(ListCasesResponse.parse(result));
+  } catch (error) {
+    console.error("Error in GET /cases:", error);
+    res.status(500).json({ error: "Failed to fetch cases" });
   }
-  const index = cases.findIndex((entry) => entry.id === params.data.id);
-  if (index === -1) {
-    res.status(404).json({ error: "Case not found" });
-    return;
+});
+
+router.post("/cases", async (req, res): Promise<void> => {
+  try {
+    const parsed = CreateCaseBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+
+    const userId = req.auth!.id;
+    const caseRef = `CASE-${Date.now()}`;
+
+    if (!db) {
+      const item = {
+        id: Date.now(),
+        title: parsed.data.title,
+        category: parsed.data.category,
+        oppositeParty: parsed.data.oppositeParty || "",
+        status: "created",
+        statusLabel: "Created",
+        nextStep: "Choose a lawyer for your consultation",
+        updatedAt: "Created just now",
+        progress: 8,
+        lawyerName: null,
+      };
+      res.status(201).json(CreateCaseResponse.parse(item));
+      return;
+    }
+
+    const [newCase] = await db
+      .insert(casesTable)
+      .values({
+        caseRef,
+        clientId: userId,
+        title: parsed.data.title,
+        category: parsed.data.category,
+        oppositeParty: parsed.data.oppositeParty,
+        description: parsed.data.title,
+        status: "CREATED",
+        progress: 8,
+        nextStep: "Choose a lawyer for your consultation",
+      })
+      .returning();
+
+    const item = {
+      id: newCase.id,
+      title: newCase.title,
+      category: newCase.category,
+      oppositeParty: newCase.oppositeParty || "",
+      status: "created",
+      statusLabel: "Created",
+      nextStep: newCase.nextStep || "",
+      updatedAt: "Created just now",
+      progress: newCase.progress,
+      lawyerName: null,
+    };
+
+    res.status(201).json(CreateCaseResponse.parse(item));
+  } catch (error) {
+    console.error("Error in POST /cases:", error);
+    res.status(500).json({ error: "Failed to create case" });
   }
-  const stages: Record<string, { label: string; progress: number; nextStep: string }> = {
-    created: { label: "Created", progress: 8, nextStep: "Choose a lawyer for your consultation" },
-    "lawyer-assigned": { label: "Lawyer assigned", progress: 18, nextStep: "Prepare for your first consultation" },
-    consultation: { label: "Consultation", progress: 30, nextStep: "Share the documents your lawyer requested" },
-    "documents-uploaded": { label: "Documents uploaded", progress: 42, nextStep: "Your lawyer will review the documents" },
-    "under-review": { label: "Under review", progress: 55, nextStep: "Your lawyer is preparing the next action" },
-    "legal-notice": { label: "Legal notice", progress: 67, nextStep: "Review the draft legal notice with your lawyer" },
-    "court-filing": { label: "Court filing", progress: 77, nextStep: "Your lawyer will share the filing reference" },
-    hearing: { label: "Hearing", progress: 88, nextStep: "Keep your hearing documents ready" },
-    resolved: { label: "Resolved", progress: 100, nextStep: "Review your case summary" },
-    closed: { label: "Closed", progress: 100, nextStep: "This matter is complete" },
-  };
-  const stage = stages[body.data.status] ?? stages.created;
-  const updated = { ...cases[index], status: body.data.status, ...stage, updatedAt: "Updated just now" };
-  cases[index] = updated;
-  res.json(UpdateCaseResponse.parse(updated));
 });
 
-router.get("/appointments", (_req, res) => {
-  res.json(ListAppointmentsResponse.parse(appointments));
-});
+router.patch("/cases/:id", async (req, res): Promise<void> => {
+  try {
+    const params = UpdateCaseParams.safeParse(req.params);
+    const body = UpdateCaseBody.safeParse(req.body);
+    if (!params.success || !body.success) {
+      res.status(400).json({ error: "Invalid case update" });
+      return;
+    }
 
-router.post("/appointments", (req, res) => {
-  const parsed = CreateAppointmentBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
+    const userId = req.auth!.id;
+    const caseId = params.data.id;
+
+    const stages: Record<string, { label: string; progress: number; nextStep: string }> = {
+      created: { label: "Created", progress: 8, nextStep: "Choose a lawyer for your consultation" },
+      "lawyer-assigned": { label: "Lawyer assigned", progress: 18, nextStep: "Prepare for your first consultation" },
+      consultation: { label: "Consultation", progress: 30, nextStep: "Share the documents your lawyer requested" },
+      "documents-uploaded": { label: "Documents uploaded", progress: 42, nextStep: "Your lawyer will review the documents" },
+      "under-review": { label: "Under review", progress: 55, nextStep: "Your lawyer is preparing the next action" },
+      "legal-notice": { label: "Legal notice", progress: 67, nextStep: "Review the draft legal notice with your lawyer" },
+      "court-filing": { label: "Court filing", progress: 77, nextStep: "Your lawyer will share the filing reference" },
+      hearing: { label: "Hearing", progress: 88, nextStep: "Keep your hearing documents ready" },
+      resolved: { label: "Resolved", progress: 100, nextStep: "Review your case summary" },
+      closed: { label: "Closed", progress: 100, nextStep: "This matter is complete" },
+    };
+
+    const stage = stages[body.data.status] ?? stages.created;
+
+    if (db) {
+      await db
+        .update(casesTable)
+        .set({
+          status: body.data.status.toUpperCase().replace(/-/g, "_"),
+          progress: stage.progress,
+          nextStep: stage.nextStep,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(casesTable.id, caseId), eq(casesTable.clientId, userId)));
+    }
+
+    const updated = {
+      id: caseId,
+      title: "Legal Case",
+      category: "General",
+      oppositeParty: "",
+      status: body.data.status,
+      ...stage,
+      updatedAt: "Updated just now",
+      lawyerName: null,
+    };
+
+    res.json(UpdateCaseResponse.parse(updated));
+  } catch (error) {
+    console.error("Error in PATCH /cases/:id:", error);
+    res.status(500).json({ error: "Failed to update case" });
   }
-  const lawyer = lawyers.find((entry) => entry.id === parsed.data.lawyerId) ?? lawyers[0];
-  const item = {
-    id: Math.max(...appointments.map((entry) => entry.id), 0) + 1,
-    lawyerName: lawyer.name,
-    lawyerInitials: lawyer.initials,
-    type: parsed.data.type,
-    date: parsed.data.date,
-    time: parsed.data.time,
-    status: "Pending payment",
-    fee: lawyer.fee,
-  };
-  appointments = [item, ...appointments];
-  res.status(201).json(CreateAppointmentResponse.parse(item));
 });
 
-router.get("/documents", (_req, res) => {
-  res.json(ListDocumentsResponse.parse(documents));
-});
+// ─── Case Requests Pipeline (Client → Lawyer) ─────────────────────────────────
+router.post("/case-requests", async (req, res): Promise<void> => {
+  try {
+    const userId = req.auth!.id;
+    const { caseId, lawyerId, message } = req.body as { caseId: number; lawyerId: number; message?: string };
 
-router.post("/documents", (req, res) => {
-  const parsed = CreateDocumentBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
+    if (!caseId || !lawyerId) {
+      res.status(400).json({ error: "caseId and lawyerId are required" });
+      return;
+    }
+
+    if (db) {
+      const requestRef = `REQ-${Date.now()}`;
+      await db.insert(caseRequestsTable).values({
+        requestRef,
+        caseId,
+        clientId: userId,
+        lawyerId,
+        status: "PENDING",
+        clientMessage: message,
+      });
+
+      const [c] = await db.select().from(casesTable).where(eq(casesTable.id, caseId)).limit(1);
+      const [client] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+
+      if (c) {
+        await db.update(casesTable).set({ status: "PENDING_LAWYER" }).where(eq(casesTable.id, caseId));
+        await notify.newCaseRequest(lawyerId, client?.fullName || "A client", c.title, c.id);
+      }
+    }
+
+    res.json({ success: true, message: "Case request sent to advocate" });
+  } catch (error) {
+    console.error("Error in POST /case-requests:", error);
+    res.status(500).json({ error: "Failed to create case request" });
   }
-  const item = { id: Math.max(...documents.map((entry) => entry.id), 0) + 1, ...parsed.data, uploadedAt: "Just now" };
-  documents = [item, ...documents];
-  res.status(201).json(CreateDocumentResponse.parse(item));
 });
 
-router.get("/payments", (_req, res) => {
-  res.json(ListPaymentsResponse.parse(payments));
+// ─── Appointments (Client) ────────────────────────────────────────────────────
+router.get("/appointments", async (req, res): Promise<void> => {
+  try {
+    const userId = req.auth!.id;
+    if (!db) {
+      res.json(ListAppointmentsResponse.parse([]));
+      return;
+    }
+
+    const appts = await db
+      .select()
+      .from(appointmentsTable)
+      .where(eq(appointmentsTable.clientId, userId))
+      .orderBy(desc(appointmentsTable.createdAt));
+
+    const users = await db.select().from(usersTable);
+
+    const result = appts.map((a) => {
+      const lawyer = users.find((u) => u.id === a.lawyerId);
+      const lawyerName = lawyer ? lawyer.fullName : "Adv. Rohan Iyer";
+      return {
+        id: a.id,
+        lawyerName,
+        lawyerInitials: lawyerName
+          .split(" ")
+          .map((w) => w[0])
+          .slice(0, 2)
+          .join("")
+          .toUpperCase(),
+        type: a.type === "VIDEO" ? "Video consultation" : "Office visit",
+        date: a.date,
+        time: a.time,
+        status: a.status === "CONFIRMED" ? "Confirmed" : "Pending payment",
+        fee: a.fee,
+      };
+    });
+
+    res.json(ListAppointmentsResponse.parse(result));
+  } catch (error) {
+    console.error("Error in GET /appointments:", error);
+    res.status(500).json({ error: "Failed to fetch appointments" });
+  }
 });
 
+router.post("/appointments", async (req, res): Promise<void> => {
+  try {
+    const parsed = CreateAppointmentBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+
+    const userId = req.auth!.id;
+    const apptRef = `APPT-${Date.now()}`;
+    const lawyerId = parsed.data.lawyerId;
+
+    let lawyerName = "Advocate";
+    if (db) {
+      const [lawyer] = await db.select().from(usersTable).where(eq(usersTable.id, lawyerId)).limit(1);
+      if (lawyer) lawyerName = lawyer.fullName;
+
+      await db.insert(appointmentsTable).values({
+        apptRef,
+        clientId: userId,
+        lawyerId,
+        type: parsed.data.type.toLowerCase().includes("video") ? "VIDEO" : "OFFICE",
+        date: parsed.data.date,
+        time: parsed.data.time,
+        status: "CONFIRMED",
+        fee: 1500,
+      });
+
+      const [client] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+      await notify.appointmentBooked(lawyerId, client?.fullName || "Client", parsed.data.date, parsed.data.time);
+    }
+
+    const item = {
+      id: Date.now(),
+      lawyerName,
+      lawyerInitials: lawyerName
+        .split(" ")
+        .map((w) => w[0])
+        .slice(0, 2)
+        .join("")
+        .toUpperCase(),
+      type: parsed.data.type,
+      date: parsed.data.date,
+      time: parsed.data.time,
+      status: "Confirmed",
+      fee: 1500,
+    };
+
+    res.status(201).json(CreateAppointmentResponse.parse(item));
+  } catch (error) {
+    console.error("Error in POST /appointments:", error);
+    res.status(500).json({ error: "Failed to create appointment" });
+  }
+});
+
+// ─── Documents (Client) ───────────────────────────────────────────────────────
+router.get("/documents", async (req, res): Promise<void> => {
+  try {
+    const userId = req.auth!.id;
+    if (!db) {
+      res.json(ListDocumentsResponse.parse([]));
+      return;
+    }
+
+    const docs = await db
+      .select()
+      .from(caseDocumentsTable)
+      .where(eq(caseDocumentsTable.uploadedByUserId, userId))
+      .orderBy(desc(caseDocumentsTable.createdAt));
+
+    const cases = await db.select().from(casesTable);
+
+    const result = docs.map((d) => {
+      const c = cases.find((entry) => entry.id === d.caseId);
+      return {
+        id: d.id,
+        name: d.name,
+        type: d.fileType,
+        size: d.fileSize,
+        uploadedAt: d.createdAt.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
+        caseTitle: c ? c.title : "General Documentation",
+      };
+    });
+
+    res.json(ListDocumentsResponse.parse(result));
+  } catch (error) {
+    console.error("Error in GET /documents:", error);
+    res.status(500).json({ error: "Failed to fetch documents" });
+  }
+});
+
+router.post("/documents", async (req, res): Promise<void> => {
+  try {
+    const parsed = CreateDocumentBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+
+    const userId = req.auth!.id;
+    const docRef = `DOC-${Date.now()}`;
+
+    if (db) {
+      const userCases = await db.select().from(casesTable).where(eq(casesTable.clientId, userId)).limit(1);
+      const caseId = userCases.length > 0 ? userCases[0].id : 1;
+
+      await db.insert(caseDocumentsTable).values({
+        docRef,
+        caseId,
+        uploadedByUserId: userId,
+        uploadedByRole: "CLIENT",
+        name: parsed.data.name,
+        fileName: `${parsed.data.name.replace(/\s+/g, "_")}.${parsed.data.type.toLowerCase()}`,
+        filePath: "",
+        fileType: parsed.data.type,
+        fileSize: parsed.data.size,
+        category: "CLIENT_DOCUMENT",
+      });
+
+      if (userCases[0]?.lawyerId) {
+        const [client] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+        await notify.documentUploaded(
+          userCases[0].lawyerId,
+          client?.fullName || "Client",
+          parsed.data.name,
+          userCases[0].title,
+          userCases[0].id,
+        );
+      }
+    }
+
+    const item = {
+      id: Date.now(),
+      ...parsed.data,
+      uploadedAt: "Just now",
+    };
+
+    res.status(201).json(CreateDocumentResponse.parse(item));
+  } catch (error) {
+    console.error("Error in POST /documents:", error);
+    res.status(500).json({ error: "Failed to upload document" });
+  }
+});
+
+// ─── Payments (Client) ────────────────────────────────────────────────────────
+router.get("/payments", async (req, res): Promise<void> => {
+  try {
+    const userId = req.auth!.id;
+    if (!db) {
+      res.json(ListPaymentsResponse.parse([]));
+      return;
+    }
+
+    const payments = await db
+      .select()
+      .from(paymentsTable)
+      .where(eq(paymentsTable.clientId, userId))
+      .orderBy(desc(paymentsTable.createdAt));
+
+    const result = payments.map((p) => ({
+      id: p.id,
+      description: `Legal service consultation`,
+      date: p.createdAt.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
+      amount: p.amount,
+      status: p.status === "PAID" ? "Paid" : "Pending",
+      receipt: p.paymentRef,
+    }));
+
+    res.json(ListPaymentsResponse.parse(result));
+  } catch (error) {
+    console.error("Error in GET /payments:", error);
+    res.status(500).json({ error: "Failed to fetch payments" });
+  }
+});
+
+// ─── AI Legal Assistant ───────────────────────────────────────────────────────
 router.post("/assistant/ask", (req, res) => {
   const parsed = AskAssistantBody.safeParse(req.body);
   if (!parsed.success) {
@@ -439,27 +711,30 @@ router.post("/assistant/ask", (req, res) => {
     return;
   }
   const question = parsed.data.question.toLowerCase();
-  let answer = "I can help you find the right legal information and prepare for a conversation with a qualified lawyer. Tell me a little more about what happened, when it happened, and which state it concerns.";
-  let sources = ["Nyaya legal information guide"];
+  let answer =
+    "I can help you understand relevant statutory provisions and connect with a verified advocate. Tell me about what occurred and what state or court jurisdiction is involved.";
+  let sources = ["Nyaya Legal Information Framework"];
   if (question.includes("consumer") || question.includes("refund")) {
-    answer = "For an unresolved online purchase or refund issue, keep your invoice, order details, payment proof, chats, and the seller's responses together. The Consumer Protection Act, 2019 may provide a route for seeking redress. A lawyer can help assess limitation periods and the most suitable forum for your specific facts.";
+    answer =
+      "For an unresolved consumer transaction, preserve your invoice, payment proof, transaction ID, and merchant correspondence. The Consumer Protection Act, 2019 provides a tiered forum structure (District, State, and National commissions) for swift resolution.";
     sources = ["The Consumer Protection Act, 2019", "Consumer Protection (E-Commerce) Rules, 2020"];
-  } else if (question.includes("property") || question.includes("land")) {
-    answer = "For a property dispute, start by gathering the sale deed, encumbrance certificate, survey records, tax receipts, and any written communications. Avoid signing new documents or making structural changes before a lawyer reviews the records. The exact remedy depends on title, possession, and the nature of the boundary issue.";
-    sources = ["The Transfer of Property Act, 1882", "Nyaya property preparation guide"];
-  } else if (question.includes("privacy") || question.includes("data") || question.includes("hack")) {
-    answer = "Preserve evidence of the incident without altering it: screenshots, emails, dates, device details, and any ticket or complaint number. Change compromised passwords and enable two-factor authentication. The Digital Personal Data Protection Act, 2023 may be relevant, but the right next step depends on what information was exposed and who controlled it.";
-    sources = ["The Digital Personal Data Protection Act, 2023", "The Information Technology Act, 2000"];
+  } else if (question.includes("property") || question.includes("land") || question.includes("boundary")) {
+    answer =
+      "For property matters, organize the registered sale deed, encumbrance certificate (EC), survey map, and property tax receipts. Avoid unilateral alterations before an advocate conducts a title and boundary search.";
+    sources = ["The Transfer of Property Act, 1882", "The Registration Act, 1908"];
+  } else if (question.includes("privacy") || question.includes("data") || question.includes("cyber")) {
+    answer =
+      "For cyber or privacy incidents, securely document digital evidence with timestamps and transaction logs. File a complaint via the National Cyber Crime Reporting Portal (cybercrime.gov.in) and notify the relevant bank or data fiduciary.";
+    sources = ["The Information Technology Act, 2000", "The Digital Personal Data Protection Act, 2023"];
   }
-  res.json(AskAssistantResponse.parse({
-    answer,
-    sources,
-    disclaimer: "Nyaya provides general legal information, not legal advice. Please consult a verified lawyer for advice about your specific situation.",
-  }));
-});
-
-router.get("/news", (_req, res) => {
-  res.json(ListNewsResponse.parse(news));
+  res.json(
+    AskAssistantResponse.parse({
+      answer,
+      sources,
+      disclaimer:
+        "Nyaya provides legal information and workflow tooling, not formal legal advice. Always consult a verified advocate for your specific matter.",
+    }),
+  );
 });
 
 export default router;
