@@ -310,34 +310,65 @@ router.get("/lawyers", async (req, res): Promise<void> => {
 router.get("/cases", async (req, res): Promise<void> => {
   try {
     const userId = req.auth!.id;
-    if (!db) {
-      res.json(ListCasesResponse.parse([]));
-      return;
+    const { memoryStore } = await import("../lib/memoryStore");
+
+    let result: Array<{
+      id: number;
+      title: string;
+      category: string;
+      oppositeParty: string;
+      status: string;
+      statusLabel: string;
+      nextStep: string;
+      updatedAt: string;
+      progress: number;
+      lawyerName: string | null;
+    }> = [];
+
+    if (db) {
+      const cases = await db
+        .select()
+        .from(casesTable)
+        .where(eq(casesTable.clientId, userId))
+        .orderBy(desc(casesTable.createdAt));
+
+      const users = await db.select().from(usersTable);
+
+      result = cases.map((c) => {
+        const lawyer = c.lawyerId ? users.find((u) => u.id === c.lawyerId) : null;
+        return {
+          id: c.id,
+          title: c.title,
+          category: c.category,
+          oppositeParty: c.oppositeParty || "",
+          status: c.status.toLowerCase().replace(/_/g, "-"),
+          statusLabel: c.status.replace(/_/g, " "),
+          nextStep: c.nextStep || "Reviewing matter details",
+          updatedAt: c.updatedAt.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
+          progress: c.progress,
+          lawyerName: lawyer ? lawyer.fullName : null,
+        };
+      });
     }
 
-    const cases = await db
-      .select()
-      .from(casesTable)
-      .where(eq(casesTable.clientId, userId))
-      .orderBy(desc(casesTable.createdAt));
-
-    const users = await db.select().from(usersTable);
-
-    const result = cases.map((c) => {
-      const lawyer = c.lawyerId ? users.find((u) => u.id === c.lawyerId) : null;
-      return {
-        id: c.id,
-        title: c.title,
-        category: c.category,
-        oppositeParty: c.oppositeParty || "",
-        status: c.status.toLowerCase().replace(/_/g, "-"),
-        statusLabel: c.status.replace(/_/g, " "),
-        nextStep: c.nextStep || "Reviewing matter details",
-        updatedAt: c.updatedAt.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
-        progress: c.progress,
-        lawyerName: lawyer ? lawyer.fullName : null,
-      };
-    });
+    // Merge in-memory cases for this client
+    const memCases = memoryStore.getCasesByClient(userId);
+    for (const mc of memCases) {
+      if (!result.some((c) => c.id === mc.id || c.title === mc.title)) {
+        result.unshift({
+          id: mc.id,
+          title: mc.title,
+          category: mc.category,
+          oppositeParty: mc.oppositeParty || "",
+          status: mc.status.toLowerCase().replace(/_/g, "-"),
+          statusLabel: mc.status.replace(/_/g, " "),
+          nextStep: mc.nextStep || "Reviewing matter details",
+          updatedAt: mc.updatedAt instanceof Date ? mc.updatedAt.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : new Date(mc.updatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
+          progress: mc.progress,
+          lawyerName: mc.lawyerName || null,
+        });
+      }
+    }
 
     res.json(ListCasesResponse.parse(result));
   } catch (error) {
@@ -355,51 +386,135 @@ router.post("/cases", async (req, res): Promise<void> => {
     }
 
     const userId = req.auth!.id;
-    const caseRef = `CASE-${Date.now()}`;
+    const { memoryStore } = await import("../lib/memoryStore");
+    const rawBody = req.body as Record<string, any>;
+    const requestedLawyerId = rawBody.lawyerId ? Number(rawBody.lawyerId) : undefined;
 
-    if (!db) {
-      const item = {
-        id: Date.now(),
-        title: parsed.data.title,
-        category: parsed.data.category,
-        oppositeParty: parsed.data.oppositeParty || "",
-        status: "created",
-        statusLabel: "Created",
-        nextStep: "Choose a lawyer for your consultation",
-        updatedAt: "Created just now",
-        progress: 8,
-        lawyerName: null,
-      };
-      res.status(201).json(CreateCaseResponse.parse(item));
-      return;
+    // Resolve client info
+    let clientName = req.auth?.email.split("@")[0] || "Client";
+    let clientEmail = req.auth?.email || "";
+    let clientPhone = "+91 98765 43210";
+    if (db) {
+      const [u] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+      if (u) {
+        clientName = u.fullName;
+        clientEmail = u.email;
+      }
+    } else {
+      const u = memoryStore.getUserById(userId);
+      if (u) {
+        clientName = u.fullName;
+        clientEmail = u.email;
+      }
     }
 
-    const [newCase] = await db
-      .insert(casesTable)
-      .values({
-        caseRef,
+    // Resolve lawyer info if requested
+    let assignedLawyerName: string | undefined = undefined;
+    if (requestedLawyerId) {
+      const lProfile = memoryStore.getLawyerProfileByUserId(requestedLawyerId);
+      const lUser = memoryStore.getUserById(requestedLawyerId);
+      assignedLawyerName = lProfile?.fullName || lUser?.fullName || "Advocate";
+    }
+
+    const caseRef = `CASE-${Date.now()}`;
+    const initialStatus = requestedLawyerId ? "PENDING_LAWYER" : "CREATED";
+    const initialProgress = requestedLawyerId ? 15 : 8;
+    const initialNextStep = requestedLawyerId
+      ? `Case request sent to ${assignedLawyerName}. Awaiting advocate review.`
+      : "Choose a lawyer for your consultation";
+
+    let createdId = Date.now();
+
+    if (db) {
+      const [newCase] = await db
+        .insert(casesTable)
+        .values({
+          caseRef,
+          clientId: userId,
+          lawyerId: requestedLawyerId,
+          title: parsed.data.title,
+          category: parsed.data.category,
+          oppositeParty: parsed.data.oppositeParty,
+          description: parsed.data.description,
+          status: initialStatus,
+          progress: initialProgress,
+          nextStep: initialNextStep,
+        })
+        .returning();
+
+      if (newCase) createdId = newCase.id;
+
+      if (requestedLawyerId) {
+        await db.insert(caseRequestsTable).values({
+          requestRef: `REQ-${Date.now()}`,
+          caseId: createdId,
+          clientId: userId,
+          lawyerId: requestedLawyerId,
+          status: "PENDING",
+          clientMessage: `Client has requested representation for ${parsed.data.title}.`,
+        });
+
+        await notify.newCaseRequest(requestedLawyerId, clientName, parsed.data.title, createdId);
+      }
+    }
+
+    // Always record in memoryStore for instant cross-portal synchronization
+    const savedCase = memoryStore.addCase({
+      id: createdId,
+      caseRef,
+      clientId: userId,
+      clientName,
+      clientEmail,
+      clientPhone,
+      clientLocation: "India",
+      lawyerId: requestedLawyerId,
+      lawyerName: assignedLawyerName,
+      title: parsed.data.title,
+      category: parsed.data.category,
+      oppositeParty: parsed.data.oppositeParty || "",
+      description: parsed.data.description,
+      status: initialStatus,
+      progress: initialProgress,
+      nextStep: initialNextStep,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    if (requestedLawyerId) {
+      memoryStore.addCaseRequest({
+        id: Date.now(),
+        requestRef: `REQ-${Date.now()}`,
+        caseId: savedCase.id,
+        caseRef: savedCase.caseRef,
         clientId: userId,
-        title: parsed.data.title,
-        category: parsed.data.category,
-        oppositeParty: parsed.data.oppositeParty,
-        description: parsed.data.title,
-        status: "CREATED",
-        progress: 8,
-        nextStep: "Choose a lawyer for your consultation",
-      })
-      .returning();
+        clientName,
+        clientEmail,
+        clientPhone,
+        clientLocation: "India",
+        lawyerId: requestedLawyerId,
+        caseTitle: savedCase.title,
+        caseCategory: savedCase.category,
+        oppositeParty: savedCase.oppositeParty,
+        description: savedCase.description,
+        clientMessage: `Client has requested representation for ${savedCase.title}.`,
+        status: "PENDING",
+        conflictChecked: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    }
 
     const item = {
-      id: newCase.id,
-      title: newCase.title,
-      category: newCase.category,
-      oppositeParty: newCase.oppositeParty || "",
-      status: "created",
-      statusLabel: "Created",
-      nextStep: newCase.nextStep || "",
+      id: savedCase.id,
+      title: savedCase.title,
+      category: savedCase.category,
+      oppositeParty: savedCase.oppositeParty || "",
+      status: savedCase.status.toLowerCase().replace(/_/g, "-"),
+      statusLabel: savedCase.status.replace(/_/g, " "),
+      nextStep: savedCase.nextStep,
       updatedAt: "Created just now",
-      progress: newCase.progress,
-      lawyerName: null,
+      progress: savedCase.progress,
+      lawyerName: assignedLawyerName || null,
     };
 
     res.status(201).json(CreateCaseResponse.parse(item));
@@ -420,16 +535,17 @@ router.patch("/cases/:id", async (req, res): Promise<void> => {
 
     const userId = req.auth!.id;
     const caseId = params.data.id;
+    const { memoryStore } = await import("../lib/memoryStore");
 
     const stages: Record<string, { label: string; progress: number; nextStep: string }> = {
       created: { label: "Created", progress: 8, nextStep: "Choose a lawyer for your consultation" },
-      "lawyer-assigned": { label: "Lawyer assigned", progress: 18, nextStep: "Prepare for your first consultation" },
-      consultation: { label: "Consultation", progress: 30, nextStep: "Share the documents your lawyer requested" },
-      "documents-uploaded": { label: "Documents uploaded", progress: 42, nextStep: "Your lawyer will review the documents" },
-      "under-review": { label: "Under review", progress: 55, nextStep: "Your lawyer is preparing the next action" },
-      "legal-notice": { label: "Legal notice", progress: 67, nextStep: "Review the draft legal notice with your lawyer" },
-      "court-filing": { label: "Court filing", progress: 77, nextStep: "Your lawyer will share the filing reference" },
-      hearing: { label: "Hearing", progress: 88, nextStep: "Keep your hearing documents ready" },
+      "lawyer-assigned": { label: "Lawyer assigned", progress: 25, nextStep: "Prepare for your first consultation" },
+      consultation: { label: "Consultation", progress: 35, nextStep: "Share the documents your lawyer requested" },
+      "documents-uploaded": { label: "Documents uploaded", progress: 48, nextStep: "Your lawyer will review the documents" },
+      "under-review": { label: "Under review", progress: 60, nextStep: "Your lawyer is preparing the next legal action" },
+      "legal-notice": { label: "Legal notice", progress: 72, nextStep: "Review the draft legal notice with your lawyer" },
+      "court-filing": { label: "Court filing", progress: 82, nextStep: "Your lawyer will share the filing reference" },
+      hearing: { label: "Hearing", progress: 92, nextStep: "Keep your hearing documents ready" },
       resolved: { label: "Resolved", progress: 100, nextStep: "Review your case summary" },
       closed: { label: "Closed", progress: 100, nextStep: "This matter is complete" },
     };
@@ -448,15 +564,23 @@ router.patch("/cases/:id", async (req, res): Promise<void> => {
         .where(and(eq(casesTable.id, caseId), eq(casesTable.clientId, userId)));
     }
 
+    const updatedMemCase = memoryStore.updateCase(caseId, {
+      status: body.data.status.toUpperCase().replace(/-/g, "_"),
+      progress: stage.progress,
+      nextStep: stage.nextStep,
+    });
+
     const updated = {
       id: caseId,
-      title: "Legal Case",
-      category: "General",
-      oppositeParty: "",
+      title: updatedMemCase?.title || "Legal Case",
+      category: updatedMemCase?.category || "General",
+      oppositeParty: updatedMemCase?.oppositeParty || "",
       status: body.data.status,
-      ...stage,
+      statusLabel: stage.label,
+      nextStep: stage.nextStep,
+      progress: stage.progress,
       updatedAt: "Updated just now",
-      lawyerName: null,
+      lawyerName: updatedMemCase?.lawyerName || null,
     };
 
     res.json(UpdateCaseResponse.parse(updated));
@@ -477,8 +601,17 @@ router.post("/case-requests", async (req, res): Promise<void> => {
       return;
     }
 
+    const { memoryStore } = await import("../lib/memoryStore");
+    const existingCase = memoryStore.getCaseById(caseId);
+    const clientUser = memoryStore.getUserById(userId);
+    const lawyerProfile = memoryStore.getLawyerProfileByUserId(lawyerId);
+    const lawyerUser = memoryStore.getUserById(lawyerId);
+    const lawyerName = lawyerProfile?.fullName || lawyerUser?.fullName || "Advocate";
+
+    const requestRef = `REQ-${Date.now()}`;
+    const nextStep = `Case request sent to ${lawyerName}. Awaiting advocate review.`;
+
     if (db) {
-      const requestRef = `REQ-${Date.now()}`;
       await db.insert(caseRequestsTable).values({
         requestRef,
         caseId,
@@ -492,10 +625,40 @@ router.post("/case-requests", async (req, res): Promise<void> => {
       const [client] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
 
       if (c) {
-        await db.update(casesTable).set({ status: "PENDING_LAWYER" }).where(eq(casesTable.id, caseId));
+        await db.update(casesTable).set({ status: "PENDING_LAWYER", lawyerId, nextStep }).where(eq(casesTable.id, caseId));
         await notify.newCaseRequest(lawyerId, client?.fullName || "A client", c.title, c.id);
       }
     }
+
+    memoryStore.addCaseRequest({
+      id: Date.now(),
+      requestRef,
+      caseId,
+      caseRef: existingCase?.caseRef || `CASE-${caseId}`,
+      clientId: userId,
+      clientName: clientUser?.fullName || req.auth?.email.split("@")[0] || "Client",
+      clientEmail: clientUser?.email || req.auth?.email || "",
+      clientPhone: "+91 98765 43210",
+      clientLocation: "India",
+      lawyerId,
+      caseTitle: existingCase?.title || "Legal Matter",
+      caseCategory: existingCase?.category || "General",
+      oppositeParty: existingCase?.oppositeParty,
+      description: existingCase?.description || message || "Client matter request",
+      clientMessage: message,
+      status: "PENDING",
+      conflictChecked: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    memoryStore.updateCase(caseId, {
+      lawyerId,
+      lawyerName,
+      status: "PENDING_LAWYER",
+      progress: 15,
+      nextStep,
+    });
 
     res.json({ success: true, message: "Case request sent to advocate" });
   } catch (error) {
@@ -697,30 +860,53 @@ router.post("/appointments", async (req, res): Promise<void> => {
 router.get("/documents", async (req, res): Promise<void> => {
   try {
     const userId = req.auth!.id;
-    if (!db) {
-      res.json(ListDocumentsResponse.parse([]));
-      return;
+    const { memoryStore } = await import("../lib/memoryStore");
+
+    let result: Array<{
+      id: number;
+      name: string;
+      type: string;
+      size: string;
+      uploadedAt: string;
+      caseTitle: string;
+    }> = [];
+
+    if (db) {
+      const docs = await db
+        .select()
+        .from(caseDocumentsTable)
+        .where(eq(caseDocumentsTable.uploadedByUserId, userId))
+        .orderBy(desc(caseDocumentsTable.createdAt));
+
+      const cases = await db.select().from(casesTable);
+
+      result = docs.map((d) => {
+        const c = cases.find((entry) => entry.id === d.caseId);
+        return {
+          id: d.id,
+          name: d.name,
+          type: d.fileType,
+          size: d.fileSize,
+          uploadedAt: d.createdAt.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
+          caseTitle: c ? c.title : "General Documentation",
+        };
+      });
     }
 
-    const docs = await db
-      .select()
-      .from(caseDocumentsTable)
-      .where(eq(caseDocumentsTable.uploadedByUserId, userId))
-      .orderBy(desc(caseDocumentsTable.createdAt));
-
-    const cases = await db.select().from(casesTable);
-
-    const result = docs.map((d) => {
-      const c = cases.find((entry) => entry.id === d.caseId);
-      return {
-        id: d.id,
-        name: d.name,
-        type: d.fileType,
-        size: d.fileSize,
-        uploadedAt: d.createdAt.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
-        caseTitle: c ? c.title : "General Documentation",
-      };
-    });
+    // Merge in-memory documents for this client
+    const memDocs = memoryStore.getDocumentsByClient(userId);
+    for (const md of memDocs) {
+      if (!result.some((d) => d.id === md.id || d.name === md.name)) {
+        result.unshift({
+          id: md.id,
+          name: md.name,
+          type: md.fileType,
+          size: md.fileSize,
+          uploadedAt: md.createdAt instanceof Date ? md.createdAt.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : new Date(md.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
+          caseTitle: md.caseTitle || "General Documentation",
+        });
+      }
+    }
 
     res.json(ListDocumentsResponse.parse(result));
   } catch (error) {
@@ -738,13 +924,24 @@ router.post("/documents", async (req, res): Promise<void> => {
     }
 
     const userId = req.auth!.id;
+    const { memoryStore } = await import("../lib/memoryStore");
     const docRef = `DOC-${Date.now()}`;
 
-    if (db) {
-      const userCases = await db.select().from(casesTable).where(eq(casesTable.clientId, userId)).limit(1);
-      const caseId = userCases.length > 0 ? userCases[0].id : 1;
+    // Resolve client details
+    const clientUser = memoryStore.getUserById(userId);
+    const clientName = clientUser?.fullName || req.auth?.email.split("@")[0] || "Client";
 
-      await db.insert(caseDocumentsTable).values({
+    // Resolve relevant case
+    const userCases = memoryStore.getCasesByClient(userId);
+    const matchedCase = userCases.find((c) => c.title === parsed.data.caseTitle) || userCases[0];
+
+    let createdId = Date.now();
+
+    if (db) {
+      const dbCases = await db.select().from(casesTable).where(eq(casesTable.clientId, userId)).limit(1);
+      const caseId = dbCases.length > 0 ? dbCases[0].id : matchedCase?.id || 1;
+
+      const [newDoc] = await db.insert(caseDocumentsTable).values({
         docRef,
         caseId,
         uploadedByUserId: userId,
@@ -755,24 +952,46 @@ router.post("/documents", async (req, res): Promise<void> => {
         fileType: parsed.data.type,
         fileSize: parsed.data.size,
         category: "CLIENT_DOCUMENT",
-      });
+      }).returning();
 
-      if (userCases[0]?.lawyerId) {
-        const [client] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+      if (newDoc) createdId = newDoc.id;
+
+      if (dbCases[0]?.lawyerId) {
         await notify.documentUploaded(
-          userCases[0].lawyerId,
-          client?.fullName || "Client",
+          dbCases[0].lawyerId,
+          clientName,
           parsed.data.name,
-          userCases[0].title,
-          userCases[0].id,
+          dbCases[0].title,
+          dbCases[0].id,
         );
       }
     }
 
+    // Always store in memoryStore for instantaneous sync to lawyer vault
+    const savedDoc = memoryStore.addDocument({
+      id: createdId,
+      docRef,
+      caseId: matchedCase?.id,
+      caseRef: matchedCase?.caseRef,
+      caseTitle: parsed.data.caseTitle || matchedCase?.title || "General",
+      uploadedByUserId: userId,
+      uploadedByRole: "CLIENT",
+      uploadedByName: clientName,
+      name: parsed.data.name,
+      fileName: `${parsed.data.name.replace(/\s+/g, "_")}.${parsed.data.type.toLowerCase()}`,
+      fileType: parsed.data.type,
+      fileSize: parsed.data.size,
+      category: "CLIENT_DOCUMENT",
+      createdAt: new Date(),
+    });
+
     const item = {
-      id: Date.now(),
-      ...parsed.data,
+      id: savedDoc.id,
+      name: savedDoc.name,
+      type: savedDoc.fileType,
+      size: savedDoc.fileSize,
       uploadedAt: "Just now",
+      caseTitle: savedDoc.caseTitle,
     };
 
     res.status(201).json(CreateDocumentResponse.parse(item));

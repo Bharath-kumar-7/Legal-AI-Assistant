@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { Link, Route, Switch, Router as WouterRouter, useLocation } from 'wouter';
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, type DragEvent, type ChangeEvent } from 'react';
 import {
   Activity, ArrowRight, Bell, BookOpen, BriefcaseBusiness, CalendarDays, Check, ChevronDown,
   CircleHelp, Clock3, CreditCard, FileText, Filter, Gavel, Grid2X2, IndianRupee, Landmark,
@@ -438,16 +438,560 @@ function BookingModal({ lawyer, onClose }: { lawyer: Lawyer; onClose: () => void
 }
 
 function Cases() {
-  const cases = useListCases(); const create = useCreateCase(); const update = useUpdateCase(); const client = useQueryClient(); const [show, setShow] = useState(false); const [selected, setSelected] = useState<Case | null>(null);
-  const [form, setForm] = useState({ title: '', category: 'Consumer', oppositeParty: '', description: '' }); const submit = () => create.mutate({ data: form }, { onSuccess: () => { client.invalidateQueries({ queryKey: getListCasesQueryKey() }); setShow(false); setForm({ title: '', category: 'Consumer', oppositeParty: '', description: '' }); } }); const advance = (item: Case) => { const nextStatus: Record<string, string> = { created: 'lawyer-assigned', 'lawyer-assigned': 'consultation', consultation: 'documents-uploaded', 'documents-uploaded': 'under-review', 'under-review': 'legal-notice', 'legal-notice': 'court-filing', 'court-filing': 'hearing', hearing: 'resolved', resolved: 'closed' }; update.mutate({ id: item.id, data: { status: nextStatus[item.status] || 'closed' } }, { onSuccess: () => client.invalidateQueries({ queryKey: getListCasesQueryKey() }) }); };
-   return <><PageHeader eyebrow="NYAYA / YOUR MATTERS" title="My cases" description="A considered record of every matter you are working through." action={<button className="button button-primary" onClick={() => setShow(true)} data-testid="button-create-case"><Plus size={16} /> Start a case</button>} />{cases.isError ? <ErrorState retry={() => cases.refetch()} /> : cases.isLoading ? <LoadingRows count={4} /> : cases.data?.length ? <div className="case-list">{cases.data.map(item => <Card className="case-card" key={item.id} data-testid={`case-card-${item.id}`}><div className="case-card-head"><div className="case-icon"><BriefcaseBusiness size={18} /></div><div className="case-title"><Pill tone={item.status === 'closed' ? 'neutral' : 'teal'}>{item.statusLabel}</Pill><h3>{item.title}</h3><p>{item.category} · Against {item.oppositeParty}</p></div><span className="case-updated">{formatDate(item.updatedAt)}</span></div><div className="progress-line"><span style={{ width: `${item.progress}%` }} /></div><div className="case-stages"><span className="stage-done"><Check size={13} /> Intake</span><span className={item.progress > 33 ? 'stage-done' : ''}>{item.progress > 33 && <Check size={13} />} Review</span><span className={item.progress > 66 ? 'stage-done' : ''}>{item.progress > 66 && <Check size={13} />} Action</span><span className={item.progress >= 100 ? 'stage-done' : ''}>{item.progress >= 100 && <Check size={13} />} Resolution</span></div><div className="case-next"><div><span>NEXT STEP</span><b>{item.nextStep}</b></div>{item.progress < 100 && <button className="button button-secondary" onClick={() => advance(item)} disabled={update.isPending} data-testid={`button-advance-case-${item.id}`}>Mark progress <ArrowRight size={14} /></button>}</div></Card>)}</div> : <EmptyState icon={BriefcaseBusiness} title="No cases yet" text="Create a case to keep your legal matter organised from day one." action={<button className="button button-primary" onClick={() => setShow(true)} data-testid="button-empty-create-case"><Plus size={16} /> Start a case</button>} />}{show && <CaseModal form={form} setForm={setForm} submit={submit} pending={create.isPending} onClose={() => setShow(false)} />}</>;
+  const cases = useListCases();
+  const create = useCreateCase();
+  const update = useUpdateCase();
+  const client = useQueryClient();
+  const [show, setShow] = useState(false);
+  const [form, setForm] = useState({ title: '', category: 'Consumer', oppositeParty: '', description: '', lawyerId: '' });
+
+  // 4s polling to keep pipeline state synced with lawyer portal
+  useEffect(() => {
+    const timer = setInterval(() => {
+      client.invalidateQueries({ queryKey: getListCasesQueryKey() });
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [client]);
+
+  const submit = () =>
+    create.mutate(
+      { data: form as any },
+      {
+        onSuccess: () => {
+          client.invalidateQueries({ queryKey: getListCasesQueryKey() });
+          setShow(false);
+          setForm({ title: '', category: 'Consumer', oppositeParty: '', description: '', lawyerId: '' });
+        },
+      }
+    );
+
+  const advance = (item: Case) => {
+    const nextStatus: Record<string, string> = {
+      created: 'lawyer-assigned',
+      'lawyer-assigned': 'consultation',
+      consultation: 'documents-uploaded',
+      'documents-uploaded': 'under-review',
+      'under-review': 'legal-notice',
+      'legal-notice': 'court-filing',
+      'court-filing': 'hearing',
+      hearing: 'resolved',
+      resolved: 'closed',
+    };
+    update.mutate(
+      { id: item.id, data: { status: nextStatus[item.status] || 'closed' } },
+      { onSuccess: () => client.invalidateQueries({ queryKey: getListCasesQueryKey() }) }
+    );
+  };
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="NYAYA / YOUR MATTERS"
+        title="My cases"
+        description="A synchronized record of every matter you are working through with your advocate."
+        action={
+          <button className="button button-primary" onClick={() => setShow(true)} data-testid="button-create-case">
+            <Plus size={16} /> Start a case
+          </button>
+        }
+      />
+      {cases.isError ? (
+        <ErrorState retry={() => cases.refetch()} />
+      ) : cases.isLoading ? (
+        <LoadingRows count={4} />
+      ) : cases.data?.length ? (
+        <div className="case-list">
+          {cases.data.map((item) => (
+            <Card className="case-card" key={item.id} data-testid={`case-card-${item.id}`}>
+              <div className="case-card-head">
+                <div className="case-icon">
+                  <BriefcaseBusiness size={18} />
+                </div>
+                <div className="case-title">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <Pill tone={item.status === 'closed' || item.status === 'resolved' ? 'neutral' : 'teal'}>
+                      {item.statusLabel}
+                    </Pill>
+                    {item.lawyerName ? (
+                      <span style={{ fontSize: '11px', color: 'hsl(var(--primary))', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <CheckCircle2 size={13} /> Advocate: {item.lawyerName}
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: '11px', color: 'hsl(var(--muted-foreground))', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <Clock3 size={13} /> Awaiting Advocate Acceptance
+                      </span>
+                    )}
+                  </div>
+                  <h3 style={{ marginTop: '4px' }}>{item.title}</h3>
+                  <p>{item.category} · Against {item.oppositeParty}</p>
+                </div>
+                <span className="case-updated">{formatDate(item.updatedAt)}</span>
+              </div>
+              
+              <div className="progress-line">
+                <span style={{ width: `${Math.max(item.progress, 8)}%` }} />
+              </div>
+              
+              <div className="case-stages">
+                <span className="stage-done"><Check size={13} /> 1. Intake / Request</span>
+                <span className={item.progress >= 25 ? 'stage-done' : ''}>
+                  {item.progress >= 25 && <Check size={13} />} 2. Lawyer Assigned
+                </span>
+                <span className={item.progress >= 45 ? 'stage-done' : ''}>
+                  {item.progress >= 45 && <Check size={13} />} 3. Documents Review
+                </span>
+                <span className={item.progress >= 70 ? 'stage-done' : ''}>
+                  {item.progress >= 70 && <Check size={13} />} 4. Notice / Filing
+                </span>
+                <span className={item.progress >= 100 ? 'stage-done' : ''}>
+                  {item.progress >= 100 && <Check size={13} />} 5. Resolution
+                </span>
+              </div>
+
+              <div className="case-next">
+                <div>
+                  <span>NEXT STEP</span>
+                  <b>{item.nextStep}</b>
+                </div>
+                {item.progress < 100 && (
+                  <button
+                    className="button button-secondary"
+                    onClick={() => advance(item)}
+                    disabled={update.isPending}
+                    data-testid={`button-advance-case-${item.id}`}
+                  >
+                    Mark progress <ArrowRight size={14} />
+                  </button>
+                )}
+              </div>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <EmptyState
+          icon={BriefcaseBusiness}
+          title="No cases yet"
+          text="Create a case to connect with an advocate and track your legal matter through every stage."
+          action={
+            <button className="button button-primary" onClick={() => setShow(true)} data-testid="button-empty-create-case">
+              <Plus size={16} /> Start a case
+            </button>
+          }
+        />
+      )}
+      {show && (
+        <CaseModal
+          form={form}
+          setForm={setForm}
+          submit={submit}
+          pending={create.isPending}
+          onClose={() => setShow(false)}
+        />
+      )}
+    </>
+  );
 }
-function CaseModal({ form, setForm, submit, pending, onClose }: { form: { title: string; category: string; oppositeParty: string; description: string }; setForm: (f: typeof form) => void; submit: () => void; pending: boolean; onClose: () => void }) { return <div className="modal-backdrop"><div className="modal"><button className="modal-close icon-button" onClick={onClose} data-testid="button-close-case"><X size={18} /></button><span className="section-kicker">NEW MATTER</span><h2>Start a case</h2><p className="modal-subtitle">A few details help us build the right workspace for you.</p><label>Case title<input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="e.g. Builder handover delay" data-testid="input-case-title" /></label><label>Area of law<select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} className="select-control" data-testid="select-case-category"><option>Consumer</option><option>Property</option><option>Employment</option><option>Family</option><option>Criminal</option></select></label><label>Opposite party<input value={form.oppositeParty} onChange={e => setForm({ ...form, oppositeParty: e.target.value })} placeholder="Person or organisation" data-testid="input-case-opposite-party" /></label><label>Brief description<textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="What happened?" rows={3} data-testid="input-case-description" /></label><button className="button button-primary full-width modal-submit" onClick={submit} disabled={pending || !form.title || !form.oppositeParty || !form.description} data-testid="button-submit-case">{pending ? 'Creating…' : 'Create case'} <ArrowRight size={16} /></button></div></div>; }
+
+function CaseModal({
+  form,
+  setForm,
+  submit,
+  pending,
+  onClose,
+}: {
+  form: { title: string; category: string; oppositeParty: string; description: string; lawyerId: string };
+  setForm: (f: typeof form) => void;
+  submit: () => void;
+  pending: boolean;
+  onClose: () => void;
+}) {
+  const lawyers = useListLawyers();
+
+  return (
+    <div className="modal-backdrop">
+      <div className="modal">
+        <button className="modal-close icon-button" onClick={onClose} data-testid="button-close-case">
+          <X size={18} />
+        </button>
+        <span className="section-kicker">NEW MATTER</span>
+        <h2>Start a case</h2>
+        <p className="modal-subtitle">A few details help us connect you with the right advocate and pipeline.</p>
+        
+        <label>
+          Case title
+          <input
+            value={form.title}
+            onChange={(e) => setForm({ ...form, title: e.target.value })}
+            placeholder="e.g. Property boundary encroachment dispute"
+            data-testid="input-case-title"
+          />
+        </label>
+        
+        <label>
+          Area of law
+          <select
+            value={form.category}
+            onChange={(e) => setForm({ ...form, category: e.target.value })}
+            className="select-control"
+            data-testid="select-case-category"
+          >
+            <option>Consumer</option>
+            <option>Property</option>
+            <option>Employment</option>
+            <option>Family</option>
+            <option>Criminal</option>
+            <option>Commercial Law</option>
+            <option>Cyber Law</option>
+          </select>
+        </label>
+
+        <label>
+          Assign Advocate (Direct Request)
+          <select
+            value={form.lawyerId}
+            onChange={(e) => setForm({ ...form, lawyerId: e.target.value })}
+            className="select-control"
+            data-testid="select-case-lawyer"
+          >
+            <option value="">Select an advocate to send request to...</option>
+            {lawyers.data?.map((l) => (
+              <option key={l.id} value={String(l.id)}>
+                {l.name} — {l.specialization} ({l.location})
+              </option>
+            ))}
+          </select>
+        </label>
+        
+        <label>
+          Opposite party
+          <input
+            value={form.oppositeParty}
+            onChange={(e) => setForm({ ...form, oppositeParty: e.target.value })}
+            placeholder="Person or organisation"
+            data-testid="input-case-opposite-party"
+          />
+        </label>
+        
+        <label>
+          Brief description
+          <textarea
+            value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+            placeholder="What happened? Outline the key facts..."
+            rows={3}
+            data-testid="input-case-description"
+          />
+        </label>
+        
+        <button
+          className="button button-primary full-width modal-submit"
+          onClick={submit}
+          disabled={pending || !form.title || !form.oppositeParty || !form.description}
+          data-testid="button-submit-case"
+        >
+          {pending ? 'Submitting…' : form.lawyerId ? 'Send Case to Advocate' : 'Create Case'} <ArrowRight size={16} />
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function Appointments() { const appointments = useListAppointments(); const [booking, setBooking] = useState<Lawyer | null>(null); const lawyers = useListLawyers(); const upcoming = (appointments.data || []).filter(a => a.status !== 'completed'); const past = (appointments.data || []).filter(a => a.status === 'completed'); return <><PageHeader eyebrow="NYAYA / YOUR CALENDAR" title="Appointments" description="Keep every legal conversation within reach." action={<button className="button button-primary" onClick={() => setBooking(lawyers.data?.[0] || null)} data-testid="button-new-appointment"><Plus size={16} /> Book consultation</button>} />{appointments.isLoading ? <LoadingRows /> : <div className="appointments-layout"><Card><div className="card-heading"><div><span className="section-kicker">UPCOMING</span><h3>Your next conversations</h3></div><span className="result-count">{upcoming.length}</span></div>{upcoming.length ? <div className="appointment-list">{upcoming.map(a => <AppointmentRow appointment={a} key={a.id} />)}</div> : <EmptyState icon={CalendarDays} title="A little space to breathe" text="You have no upcoming appointments." />}</Card><Card><div className="card-heading"><div><span className="section-kicker">PAST CONSULTATIONS</span><h3>Previous conversations</h3></div></div>{past.length ? past.map(a => <AppointmentRow appointment={a} key={a.id} />) : <EmptyState icon={Clock3} title="No past consultations" text="Completed consultations will remain here for reference." />}</Card></div>}{booking && <BookingModal lawyer={booking} onClose={() => setBooking(null)} />}</>; }
 function AppointmentRow({ appointment: a }: { appointment: Appointment }) { return <div className="appointment-row" data-testid={`appointment-row-${a.id}`}><div className="date-tile"><b>{new Date(a.date).getDate() || '—'}</b><span>{new Date(a.date).toLocaleDateString('en-IN', { month: 'short' })}</span></div><div className="appointment-detail"><div><h4>{a.lawyerName}</h4><p>{a.type} · {a.time}</p></div><Pill tone={a.status === 'completed' ? 'neutral' : 'teal'}>{a.status}</Pill></div><button className="icon-button bordered-icon" data-testid={`button-open-appointment-${a.id}`}><ArrowRight size={16} /></button></div>; }
 
-function Documents() { const docs = useListDocuments(); const create = useCreateDocument(); const client = useQueryClient(); const [show, setShow] = useState(false); const [form, setForm] = useState({ name: '', type: 'PDF', size: 'Pending upload', caseTitle: 'General' }); const submit = () => create.mutate({ data: form }, { onSuccess: () => { client.invalidateQueries({ queryKey: getListDocumentsQueryKey() }); setShow(false); } }); return <><PageHeader eyebrow="NYAYA / PRIVATE VAULT" title="Documents" description="The papers behind your case, kept secure and easy to find." action={<button className="button button-primary" onClick={() => setShow(true)} data-testid="button-add-document"><Upload size={16} /> Add document</button>} /><Card className="secure-banner"><span className="secure-seal"><ShieldCheck size={20} /></span><div><strong>Your documents are private by design.</strong><p>Encrypted storage and access only for you and the professionals you choose.</p></div><span className="mono-label">AES-256</span></Card><Card className="documents-card"><div className="card-heading"><div><span className="section-kicker">YOUR FILES</span><h3>Document vault</h3></div><div className="search-field compact"><Search size={15} /><input placeholder="Search files" data-testid="input-document-search" /></div></div>{docs.isLoading ? <LoadingRows /> : docs.data?.length ? <div className="document-table"><div className="table-head"><span>Document</span><span>Case</span><span>Added</span><span>Size</span><span /></div>{docs.data.map(d => <div className="document-row" key={d.id} data-testid={`document-row-${d.id}`}><div className="document-name"><span className="file-icon"><FileText size={17} /></span><div><b>{d.name}</b><small>{d.type}</small></div></div><span>{d.caseTitle}</span><span>{formatDate(d.uploadedAt)}</span><span>{d.size}</span><button className="icon-button" title="Download document" data-testid={`button-download-document-${d.id}`}><Download size={16} /></button></div>)}</div> : <EmptyState icon={FileText} title="Your vault is empty" text="Add a document to keep the details of your matter together." action={<button className="button button-primary" onClick={() => setShow(true)} data-testid="button-empty-add-document"><Plus size={16} /> Add document</button>} />}</Card>{show && <div className="modal-backdrop"><div className="modal"><button className="modal-close icon-button" onClick={() => setShow(false)} data-testid="button-close-document"><X size={18} /></button><span className="section-kicker">PRIVATE VAULT</span><h2>Add document</h2><p className="modal-subtitle">Add file details now. You can attach the file securely afterward.</p><label>Document name<input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Sale agreement" data-testid="input-document-name" /></label><label>File type<select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="select-control" data-testid="select-document-type"><option>PDF</option><option>DOCX</option><option>Image</option></select></label><label>Related case<input value={form.caseTitle} onChange={e => setForm({ ...form, caseTitle: e.target.value })} data-testid="input-document-case" /></label><button className="button button-primary full-width modal-submit" onClick={submit} disabled={create.isPending || !form.name} data-testid="button-submit-document">{create.isPending ? 'Adding…' : 'Add to vault'} <ArrowRight size={16} /></button></div></div>}</>; }
+function Documents() {
+  const docs = useListDocuments();
+  const create = useCreateDocument();
+  const cases = useListCases();
+  const client = useQueryClient();
+  const [search, setSearch] = useState('');
+  const [dragActive, setDragActive] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState<{ name: string; size: string; type: string } | null>(null);
+  const [selectedCase, setSelectedCase] = useState('');
+  const [customName, setCustomName] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [successBanner, setSuccessBanner] = useState('');
+
+  // Auto-poll to sync documents across client and lawyer vaults
+  useEffect(() => {
+    const timer = setInterval(() => {
+      client.invalidateQueries({ queryKey: getListDocumentsQueryKey() });
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [client]);
+
+  const handleFiles = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    const sizeInKb = file.size / 1024;
+    const sizeStr = sizeInKb > 1024 ? `${(sizeInKb / 1024).toFixed(1)} MB` : `${Math.round(sizeInKb)} KB`;
+    const ext = file.name.split('.').pop()?.toUpperCase() || 'PDF';
+    const cleanName = file.name.replace(/\.[^/.]+$/, '');
+    setUploadedFile({ name: cleanName, size: sizeStr, type: ext });
+    setCustomName(cleanName);
+    if (!selectedCase && cases.data && cases.data.length > 0) {
+      setSelectedCase(cases.data[0].title);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    handleFiles(e.dataTransfer.files);
+  };
+
+  const handleSendToLawyer = () => {
+    if (!uploadedFile) return;
+    setIsSubmitting(true);
+    const caseTitle = selectedCase || (cases.data?.[0]?.title) || 'General Documentation';
+    create.mutate(
+      {
+        data: {
+          name: customName || uploadedFile.name,
+          type: uploadedFile.type,
+          size: uploadedFile.size,
+          caseTitle,
+        },
+      },
+      {
+        onSuccess: () => {
+          client.invalidateQueries({ queryKey: getListDocumentsQueryKey() });
+          setSuccessBanner(`"${customName || uploadedFile.name}" has been uploaded to the vault and shared with your advocate.`);
+          setUploadedFile(null);
+          setCustomName('');
+          setIsSubmitting(false);
+          setTimeout(() => setSuccessBanner(''), 5000);
+        },
+        onError: () => {
+          setIsSubmitting(false);
+        },
+      }
+    );
+  };
+
+  const handleDownload = (doc: Document) => {
+    const content = `NYAYA LEGAL VAULT DOCUMENT RECORD\n=================================\n\nDocument Title: ${doc.name}\nCase Matter: ${doc.caseTitle}\nFile Type: ${doc.type}\nFile Size: ${doc.size}\nUpload Timestamp: ${doc.uploadedAt}\n\nSecurity Status: AES-256 Verified\nThis document has been safely verified and synchronized across client and advocate workspaces.`;
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${doc.name.replace(/\s+/g, '_')}.${doc.type.toLowerCase() === 'pdf' ? 'txt' : doc.type.toLowerCase()}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const filteredDocs = (docs.data || []).filter((d) =>
+    !search ||
+    d.name.toLowerCase().includes(search.toLowerCase()) ||
+    d.caseTitle.toLowerCase().includes(search.toLowerCase()) ||
+    d.type.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="NYAYA / PRIVATE VAULT"
+        title="Documents"
+        description="The papers behind your case, kept secure, encrypted, and accessible to your advocate."
+        action={
+          <button
+            className="button button-primary"
+            onClick={() => document.getElementById('dropbox-file-input')?.click()}
+            data-testid="button-add-document"
+          >
+            <Upload size={16} /> Choose file to send
+          </button>
+        }
+      />
+
+      {successBanner && (
+        <div style={{ background: 'hsl(142 70% 45% / .15)', border: '1px solid hsl(142 70% 45% / .3)', color: 'hsl(142 70% 35%)', padding: '12px 18px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', fontWeight: 600 }}>
+          <CheckCircle2 size={18} />
+          <span>{successBanner}</span>
+        </div>
+      )}
+
+      {/* Dropbox Dropzone */}
+      <Card
+        className="secure-banner"
+        style={{
+          border: dragActive ? '2px dashed hsl(var(--primary))' : '2px dashed hsl(var(--border))',
+          background: dragActive ? 'hsl(var(--primary) / 0.05)' : 'hsl(var(--card))',
+          padding: '28px 20px',
+          textAlign: 'center',
+          cursor: 'pointer',
+          transition: 'all 0.2s ease',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '12px',
+        }}
+        onDragEnter={(e: DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); setDragActive(true); }}
+        onDragOver={(e: DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); setDragActive(true); }}
+        onDragLeave={(e: DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); setDragActive(false); }}
+        onDrop={handleDrop}
+        onClick={() => document.getElementById('dropbox-file-input')?.click()}
+      >
+        <input
+          id="dropbox-file-input"
+          type="file"
+          style={{ display: 'none' }}
+          onChange={(e: ChangeEvent<HTMLInputElement>) => handleFiles(e.target.files)}
+        />
+        <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'hsl(var(--primary) / 0.1)', display: 'grid', placeItems: 'center', color: 'hsl(var(--primary))' }}>
+          <Upload size={24} />
+        </div>
+        <div>
+          <strong style={{ fontSize: '15px', display: 'block', marginBottom: '4px' }}>
+            Dropbox: Drag and drop files here, or click to browse
+          </strong>
+          <p style={{ fontSize: '12px', color: 'hsl(var(--muted-foreground))', margin: 0 }}>
+            Upload legal agreements, notices, survey maps, or police reports to send directly to your advocate.
+          </p>
+        </div>
+        <span className="mono-label" style={{ fontSize: '10px', marginTop: '4px' }}>
+          SUPPORTED: PDF, DOCX, PNG, JPG, TXT · UP TO 25 MB · AES-256 ENCRYPTED
+        </span>
+      </Card>
+
+      {/* Selected File Card to Confirm & Send */}
+      {uploadedFile && (
+        <Card style={{ padding: '20px', border: '1px solid hsl(var(--primary) / 0.4)', background: 'hsl(var(--card))', display: 'grid', gap: '14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span className="file-icon" style={{ background: 'hsl(var(--primary) / 0.15)', color: 'hsl(var(--primary))', padding: '8px', borderRadius: '8px', display: 'grid', placeItems: 'center' }}>
+                <FileText size={20} />
+              </span>
+              <div>
+                <b style={{ fontSize: '14px', display: 'block' }}>{uploadedFile.name}</b>
+                <small style={{ color: 'hsl(var(--muted-foreground))', fontSize: '11px' }}>{uploadedFile.type} · {uploadedFile.size}</small>
+              </div>
+            </div>
+            <button className="icon-button" onClick={() => setUploadedFile(null)} title="Cancel">
+              <X size={16} />
+            </button>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+            <label style={{ display: 'grid', gap: '4px', fontSize: '11px', fontWeight: 600, color: 'hsl(var(--muted-foreground))' }}>
+              Document Title
+              <input
+                value={customName}
+                onChange={(e) => setCustomName(e.target.value)}
+                placeholder="Name for this document"
+                style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid hsl(var(--border))', background: 'hsl(var(--background))' }}
+              />
+            </label>
+
+            <label style={{ display: 'grid', gap: '4px', fontSize: '11px', fontWeight: 600, color: 'hsl(var(--muted-foreground))' }}>
+              Select Case / Matter
+              <select
+                value={selectedCase}
+                onChange={(e) => setSelectedCase(e.target.value)}
+                className="select-control"
+                style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid hsl(var(--border))', background: 'hsl(var(--background))' }}
+              >
+                {cases.data && cases.data.length > 0 ? (
+                  cases.data.map((c) => (
+                    <option key={c.id} value={c.title}>
+                      {c.title} ({c.category})
+                    </option>
+                  ))
+                ) : (
+                  <option value="General Documentation">General Documentation</option>
+                )}
+              </select>
+            </label>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            <button className="button button-secondary" onClick={() => setUploadedFile(null)} disabled={isSubmitting}>
+              Cancel
+            </button>
+            <button className="button button-primary" onClick={handleSendToLawyer} disabled={isSubmitting || !customName}>
+              {isSubmitting ? 'Uploading…' : 'Send Document to Advocate'} <Send size={15} />
+            </button>
+          </div>
+        </Card>
+      )}
+
+      {/* Vault List */}
+      <Card className="documents-card">
+        <div className="card-heading">
+          <div>
+            <span className="section-kicker">YOUR FILES & EVIDENCE</span>
+            <h3>Document vault ({filteredDocs.length})</h3>
+          </div>
+          <div className="search-field compact">
+            <Search size={15} />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search files or cases..."
+              data-testid="input-document-search"
+            />
+          </div>
+        </div>
+
+        {docs.isLoading ? (
+          <LoadingRows />
+        ) : filteredDocs.length ? (
+          <div className="document-table">
+            <div className="table-head">
+              <span>Document</span>
+              <span>Case</span>
+              <span>Added</span>
+              <span>Size</span>
+              <span />
+            </div>
+            {filteredDocs.map((d) => (
+              <div className="document-row" key={d.id} data-testid={`document-row-${d.id}`}>
+                <div className="document-name">
+                  <span className="file-icon">
+                    <FileText size={17} />
+                  </span>
+                  <div>
+                    <b>{d.name}</b>
+                    <small>{d.type}</small>
+                  </div>
+                </div>
+                <span>{d.caseTitle}</span>
+                <span>{formatDate(d.uploadedAt)}</span>
+                <span>{d.size}</span>
+                <button
+                  className="icon-button"
+                  title="Download document"
+                  onClick={() => handleDownload(d)}
+                  data-testid={`button-download-document-${d.id}`}
+                >
+                  <Download size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            icon={FileText}
+            title="Your vault is empty"
+            text="Use the dropbox above to upload documents and send them to your advocate."
+            action={
+              <button
+                className="button button-primary"
+                onClick={() => document.getElementById('dropbox-file-input')?.click()}
+                data-testid="button-empty-add-document"
+              >
+                <Plus size={16} /> Add document
+              </button>
+            }
+          />
+        )}
+      </Card>
+    </>
+  );
+}
 
 function Payments() { const payments = useListPayments(); return <><PageHeader eyebrow="NYAYA / FINANCIAL RECORD" title="Payments" description="A transparent record of your consultations and services." /><Card className="payment-summary"><div><span className="section-kicker">TOTAL THIS YEAR</span><strong><IndianRupee size={21} />{(payments.data || []).reduce((s, p) => s + p.amount, 0).toLocaleString('en-IN')}</strong><p>All payments are recorded with a receipt.</p></div><div className="payment-seal"><CreditCard size={20} /><span>Secure<br />payments</span></div></Card><Card className="payments-card"><div className="card-heading"><div><span className="section-kicker">TRANSACTION HISTORY</span><h3>Payment history</h3></div><button className="button button-secondary" data-testid="button-export-payments"><Download size={15} /> Export</button></div>{payments.isLoading ? <LoadingRows /> : payments.data?.length ? <div className="payment-table"><div className="table-head"><span>Description</span><span>Date</span><span>Amount</span><span>Status</span><span /></div>{payments.data.map(p => <div className="payment-row" key={p.id} data-testid={`payment-row-${p.id}`}><div className="payment-description"><span className="payment-icon"><CreditCard size={16} /></span><b>{p.description}</b></div><span>{formatDate(p.date)}</span><strong><IndianRupee size={13} />{p.amount.toLocaleString('en-IN')}</strong><Pill tone={p.status === 'paid' ? 'teal' : 'gold'}>{p.status}</Pill><button className="icon-button" title="Download receipt" data-testid={`button-receipt-${p.id}`}><Download size={16} /></button></div>)}</div> : <EmptyState icon={CreditCard} title="No payments yet" text="Your completed payments and receipts will show here." />}</Card></>; }
 

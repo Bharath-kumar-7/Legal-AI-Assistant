@@ -305,7 +305,7 @@ export function LawyerProvider({ children }: { children: React.ReactNode }) {
         appointments: [],
         payments: [],
       };
-      setCases(prev => [newCase, ...prev]);
+      setCases(prev => [newCase, ...prev.filter(c => c.caseId !== req.caseId)]);
       addNotification({
         type: 'CASE_UPDATED',
         source: 'SYSTEM',
@@ -322,6 +322,25 @@ export function LawyerProvider({ children }: { children: React.ReactNode }) {
         description: `Lawyer accepted case request ${requestId} (${req.client.name} — ${req.caseTitle}).`,
       });
       addToast(`Case "${req.caseTitle}" accepted.`);
+    }
+
+    // Call backend API to persist and sync across client and lawyer portals
+    const token = localStorage.getItem('nyaya_token');
+    if (token) {
+      fetch(`/api/lawyer/case-requests/${requestId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: 'ACCEPT', conflictChecked: true }),
+      })
+        .then(() => {
+          fetch('/api/lawyer/cases', { headers: { Authorization: `Bearer ${token}` } })
+            .then(r => r.ok ? r.json() : null)
+            .then(data => { if (Array.isArray(data)) setCases(data); });
+          fetch('/api/lawyer/case-requests', { headers: { Authorization: `Bearer ${token}` } })
+            .then(r => r.ok ? r.json() : null)
+            .then(data => { if (Array.isArray(data)) setCaseRequests(data); });
+        })
+        .catch(() => {});
     }
   }, [caseRequests, profile.userId, addNotification, appendAudit, addToast]);
 
@@ -347,6 +366,15 @@ export function LawyerProvider({ children }: { children: React.ReactNode }) {
         relatedCaseTitle: req.caseTitle,
         senderName: 'Nyaya System',
       });
+    }
+
+    const token = localStorage.getItem('nyaya_token');
+    if (token) {
+      fetch(`/api/lawyer/case-requests/${requestId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: 'REJECT', rejectReason: reason }),
+      }).catch(() => {});
     }
   }, [caseRequests, appendAudit, addToast, addNotification]);
 
@@ -376,6 +404,15 @@ export function LawyerProvider({ children }: { children: React.ReactNode }) {
       description: `Lawyer requested additional information: "${message}"`,
     });
     addToast('Information request sent to client.', 'info');
+
+    const token = localStorage.getItem('nyaya_token');
+    if (token) {
+      fetch(`/api/lawyer/case-requests/${requestId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: 'REQUEST_INFO', infoRequest: message }),
+      }).catch(() => {});
+    }
   }, [appendAudit, addToast]);
 
   // ─── Cases ─────────────────────────────────────────────────────────────────
@@ -408,6 +445,15 @@ export function LawyerProvider({ children }: { children: React.ReactNode }) {
       description: `Case status updated to ${newStatus} for ${caseId}${note ? `. Note: ${note}` : ''}.`,
     });
     addToast('Case status updated.');
+
+    const token = localStorage.getItem('nyaya_token');
+    if (token) {
+      fetch(`/api/lawyer/cases/${caseId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status: newStatus, nextStep: note }),
+      }).catch(() => {});
+    }
   }, [profile.userId, appendAudit, addToast]);
 
   // ─── Documents ─────────────────────────────────────────────────────────────
@@ -428,6 +474,20 @@ export function LawyerProvider({ children }: { children: React.ReactNode }) {
       description: `Uploaded "${newDoc.name}" to case ${caseId}.`,
     });
     addToast('Document uploaded.');
+
+    const token = localStorage.getItem('nyaya_token');
+    if (token) {
+      fetch(`/api/lawyer/cases/${caseId}/documents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          name: doc.name,
+          fileType: doc.fileType,
+          fileSize: doc.fileSize,
+          category: doc.category,
+        }),
+      }).catch(() => {});
+    }
   }, [appendAudit, addToast]);
 
   const deleteDocument = useCallback((caseId: string, docId: string) => {

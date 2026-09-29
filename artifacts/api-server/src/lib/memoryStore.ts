@@ -56,6 +56,71 @@ export interface MemoryAppointment {
   updatedAt: Date;
 }
 
+export interface MemoryCase {
+  id: number;
+  caseRef: string;
+  clientId: number;
+  clientName: string;
+  clientEmail: string;
+  clientPhone?: string;
+  clientLocation?: string;
+  lawyerId?: number;
+  lawyerName?: string;
+  title: string;
+  category: string;
+  oppositeParty: string;
+  description: string;
+  status: string; // e.g. "CREATED" | "PENDING_LAWYER" | "ACTIVE" | "CONSULTATION_SCHEDULED" | "DOCUMENTS_UPLOADED" | "UNDER_REVIEW" | "LEGAL_NOTICE" | "COURT_FILING" | "HEARING" | "RESOLVED" | "CLOSED"
+  progress: number;
+  nextStep: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface MemoryCaseRequest {
+  id: number;
+  requestRef: string;
+  caseId: number;
+  caseRef: string;
+  clientId: number;
+  clientName: string;
+  clientEmail: string;
+  clientPhone: string;
+  clientLocation: string;
+  lawyerId: number;
+  caseTitle: string;
+  caseCategory: string;
+  oppositeParty?: string;
+  description: string;
+  clientMessage?: string;
+  status: "PENDING" | "ACCEPTED" | "REJECTED" | "INFO_REQUESTED";
+  conflictChecked?: boolean;
+  rejectReason?: string;
+  infoRequest?: string;
+  infoRequests?: Array<{ id: string; message: string; sentAt: string }>;
+  createdAt: Date;
+  decidedAt?: Date;
+  updatedAt: Date;
+}
+
+export interface MemoryDocument {
+  id: number;
+  docRef: string;
+  caseId?: number;
+  caseRef?: string;
+  caseTitle: string;
+  uploadedByUserId: number;
+  uploadedByRole: "CLIENT" | "LAWYER";
+  uploadedByName: string;
+  name: string;
+  fileName: string;
+  fileType: string;
+  fileSize: string;
+  category: string;
+  fileData?: string;
+  createdAt: Date;
+}
+
 const initialUsers: User[] = [
   {
     id: 1,
@@ -278,10 +343,153 @@ const initialAppointments: MemoryAppointment[] = [
   },
 ];
 
+const initialCases: MemoryCase[] = [
+  {
+    id: 1,
+    caseRef: "CASE-10024",
+    clientId: 101,
+    clientName: "Rahul Sharma",
+    clientEmail: "client@nyaya.in",
+    clientPhone: "+91 98765 43210",
+    clientLocation: "Mumbai, Maharashtra",
+    lawyerId: 201,
+    lawyerName: "Adv. Rohan Iyer",
+    title: "Property boundary dispute with neighbour",
+    category: "Property",
+    oppositeParty: "Ramesh Sharma",
+    description: "Neighbor encroached on 150 sq ft of residential plot during boundary wall construction. Survey records clearly show the demarcation line.",
+    status: "ACTIVE",
+    progress: 45,
+    nextStep: "Reviewing title deeds and survey maps before issuing formal legal notice.",
+    createdAt: new Date("2026-09-08T09:30:00Z"),
+    updatedAt: new Date("2026-09-21T11:30:00Z"),
+  },
+  {
+    id: 2,
+    caseRef: "CASE-10025",
+    clientId: 102,
+    clientName: "Pooja Verma",
+    clientEmail: "pooja.verma@example.com",
+    clientPhone: "+91 98111 22334",
+    clientLocation: "New Delhi, Delhi",
+    lawyerId: 201,
+    lawyerName: "Adv. Rohan Iyer",
+    title: "Commercial lease agreement breach and deposit refund",
+    category: "Commercial Law",
+    oppositeParty: "Apex Realty Developers",
+    description: "Landlord refusing to refund security deposit of Rs 4,50,000 despite vacating commercial premises after due notice period.",
+    status: "PENDING_LAWYER",
+    progress: 15,
+    nextStep: "Awaiting advocate acceptance and consultation scheduling.",
+    createdAt: new Date("2026-09-18T14:20:00Z"),
+    updatedAt: new Date("2026-09-18T14:20:00Z"),
+  },
+];
+
+const initialCaseRequests: MemoryCaseRequest[] = [
+  {
+    id: 1,
+    requestRef: "REQ-2026-001",
+    caseId: 1,
+    caseRef: "CASE-10024",
+    clientId: 101,
+    clientName: "Rahul Sharma",
+    clientEmail: "client@nyaya.in",
+    clientPhone: "+91 98765 43210",
+    clientLocation: "Mumbai, Maharashtra",
+    lawyerId: 201,
+    caseTitle: "Property boundary dispute with neighbour",
+    caseCategory: "Property",
+    oppositeParty: "Ramesh Sharma",
+    description: "Neighbor encroached on 150 sq ft of residential plot during boundary wall construction.",
+    clientMessage: "Respected Adv. Rohan Iyer, please advise on whether we should first send a legal notice or file an injunction in the City Civil Court.",
+    status: "ACCEPTED",
+    conflictChecked: true,
+    createdAt: new Date("2026-09-08T09:30:00Z"),
+    decidedAt: new Date("2026-09-08T10:15:00Z"),
+    updatedAt: new Date("2026-09-08T10:15:00Z"),
+  },
+  {
+    id: 2,
+    requestRef: "REQ-2026-002",
+    caseId: 2,
+    caseRef: "CASE-10025",
+    clientId: 102,
+    clientName: "Pooja Verma",
+    clientEmail: "pooja.verma@example.com",
+    clientPhone: "+91 98111 22334",
+    clientLocation: "New Delhi, Delhi",
+    lawyerId: 201,
+    caseTitle: "Commercial lease agreement breach and deposit refund",
+    caseCategory: "Commercial Law",
+    oppositeParty: "Apex Realty Developers",
+    description: "Landlord refusing to refund security deposit of Rs 4,50,000 despite vacating commercial premises after due notice period.",
+    clientMessage: "We have all rent receipts and the registered lease deed. Would appreciate your immediate guidance on sending a stern legal notice.",
+    status: "PENDING",
+    conflictChecked: false,
+    createdAt: new Date("2026-09-18T14:20:00Z"),
+    updatedAt: new Date("2026-09-18T14:20:00Z"),
+  },
+];
+
+const initialDocuments: MemoryDocument[] = [
+  {
+    id: 1,
+    docRef: "DOC-2026-001",
+    caseId: 1,
+    caseRef: "CASE-10024",
+    caseTitle: "Property boundary dispute with neighbour",
+    uploadedByUserId: 101,
+    uploadedByRole: "CLIENT",
+    uploadedByName: "Rahul Sharma",
+    name: "Government Land Demarcation & Survey Map",
+    fileName: "survey_demarcation_map_2026.pdf",
+    fileType: "PDF",
+    fileSize: "2.4 MB",
+    category: "EVIDENCE",
+    createdAt: new Date("2026-09-09T11:00:00Z"),
+  },
+  {
+    id: 2,
+    docRef: "DOC-2026-002",
+    caseId: 1,
+    caseRef: "CASE-10024",
+    caseTitle: "Property boundary dispute with neighbour",
+    uploadedByUserId: 101,
+    uploadedByRole: "CLIENT",
+    uploadedByName: "Rahul Sharma",
+    name: "Registered Sale Deed & Title Record",
+    fileName: "registered_sale_deed_plot42.pdf",
+    fileType: "PDF",
+    fileSize: "1.8 MB",
+    category: "AGREEMENT",
+    createdAt: new Date("2026-09-09T11:05:00Z"),
+  },
+  {
+    id: 3,
+    docRef: "DOC-2026-003",
+    caseId: 1,
+    caseRef: "CASE-10024",
+    caseTitle: "Property boundary dispute with neighbour",
+    uploadedByUserId: 201,
+    uploadedByRole: "LAWYER",
+    uploadedByName: "Adv. Rohan Iyer",
+    name: "Draft Cease & Desist Legal Notice",
+    fileName: "draft_legal_notice_encroachment.pdf",
+    fileType: "PDF",
+    fileSize: "420 KB",
+    category: "NOTICE",
+    createdAt: new Date("2026-09-22T16:00:00Z"),
+  },
+];
+
 class MemoryStore {
   private users: User[] = [...initialUsers];
   private profiles: MemoryLawyerProfile[] = [...initialProfiles];
   private appointments: MemoryAppointment[] = [...initialAppointments];
+  private cases: MemoryCase[] = [...initialCases];
+  private caseRequests: MemoryCaseRequest[] = [...initialCaseRequests];
+  private documents: MemoryDocument[] = [...initialDocuments];
   private otps: Map<string, MemoryOtp> = new Map();
 
   getUsers(): User[] {
@@ -410,6 +618,110 @@ class MemoryStore {
     if (time) appt.time = time;
     appt.updatedAt = new Date();
     return appt;
+  }
+
+  getCases(): MemoryCase[] {
+    return [...this.cases];
+  }
+
+  getCasesByClient(clientId: number): MemoryCase[] {
+    return this.cases.filter((c) => c.clientId === clientId);
+  }
+
+  getCasesByLawyer(lawyerId: number): MemoryCase[] {
+    return this.cases.filter((c) => c.lawyerId === lawyerId);
+  }
+
+  getCaseById(id: number | string): MemoryCase | undefined {
+    return this.cases.find((c) => c.id === Number(id) || c.caseRef === String(id));
+  }
+
+  addCase(c: MemoryCase): MemoryCase {
+    const existingIndex = this.cases.findIndex((item) => item.id === c.id || item.caseRef === c.caseRef);
+    if (existingIndex >= 0) {
+      this.cases[existingIndex] = { ...this.cases[existingIndex], ...c };
+      return this.cases[existingIndex];
+    }
+    this.cases.unshift(c);
+    return c;
+  }
+
+  updateCase(caseRefOrId: string | number, updates: Partial<MemoryCase>): MemoryCase | null {
+    const c = this.cases.find((item) => item.id === Number(caseRefOrId) || item.caseRef === String(caseRefOrId));
+    if (!c) return null;
+    Object.assign(c, updates);
+    c.updatedAt = new Date();
+    return c;
+  }
+
+  getCaseRequests(): MemoryCaseRequest[] {
+    return [...this.caseRequests];
+  }
+
+  getCaseRequestsByLawyer(lawyerId: number): MemoryCaseRequest[] {
+    return this.caseRequests.filter((r) => r.lawyerId === lawyerId);
+  }
+
+  getCaseRequestsByClient(clientId: number): MemoryCaseRequest[] {
+    return this.caseRequests.filter((r) => r.clientId === clientId);
+  }
+
+  getCaseRequestByRef(requestRef: string): MemoryCaseRequest | undefined {
+    return this.caseRequests.find((r) => r.requestRef === requestRef);
+  }
+
+  addCaseRequest(req: MemoryCaseRequest): MemoryCaseRequest {
+    const existingIndex = this.caseRequests.findIndex((r) => r.requestRef === req.requestRef);
+    if (existingIndex >= 0) {
+      this.caseRequests[existingIndex] = { ...this.caseRequests[existingIndex], ...req };
+      return this.caseRequests[existingIndex];
+    }
+    this.caseRequests.unshift(req);
+    return req;
+  }
+
+  updateCaseRequest(requestRef: string, updates: Partial<MemoryCaseRequest>): MemoryCaseRequest | null {
+    const req = this.caseRequests.find((r) => r.requestRef === requestRef);
+    if (!req) return null;
+    Object.assign(req, updates);
+    req.updatedAt = new Date();
+    return req;
+  }
+
+  getDocuments(): MemoryDocument[] {
+    return [...this.documents];
+  }
+
+  getDocumentsByClient(clientId: number): MemoryDocument[] {
+    const clientCaseIds = new Set(this.getCasesByClient(clientId).map((c) => c.id));
+    return this.documents.filter((d) => d.uploadedByUserId === clientId || (d.caseId && clientCaseIds.has(d.caseId)));
+  }
+
+  getDocumentsByCase(caseIdOrRef: string | number): MemoryDocument[] {
+    return this.documents.filter(
+      (d) => d.caseId === Number(caseIdOrRef) || d.caseRef === String(caseIdOrRef),
+    );
+  }
+
+  getDocumentsByLawyer(lawyerId: number): MemoryDocument[] {
+    const lawyerCaseIds = new Set(this.getCasesByLawyer(lawyerId).map((c) => c.id));
+    return this.documents.filter((d) => d.uploadedByUserId === lawyerId || (d.caseId && lawyerCaseIds.has(d.caseId)));
+  }
+
+  addDocument(doc: MemoryDocument): MemoryDocument {
+    const existingIndex = this.documents.findIndex((d) => d.docRef === doc.docRef);
+    if (existingIndex >= 0) {
+      this.documents[existingIndex] = { ...this.documents[existingIndex], ...doc };
+      return this.documents[existingIndex];
+    }
+    this.documents.unshift(doc);
+    return doc;
+  }
+
+  deleteDocument(docRef: string): boolean {
+    const initialLen = this.documents.length;
+    this.documents = this.documents.filter((d) => d.docRef !== docRef);
+    return this.documents.length < initialLen;
   }
 }
 
