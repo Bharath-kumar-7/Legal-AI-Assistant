@@ -9,6 +9,8 @@ function generateOtp(): string {
   return String(randomInt(100000, 999999));
 }
 
+import { memoryStore } from './memoryStore';
+
 export async function createAndSendOtp(
   userId: number,
   email: string,
@@ -16,6 +18,9 @@ export async function createAndSendOtp(
 ): Promise<string> {
   const code = generateOtp();
   const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
+
+  // Always store in memory store for instant/offline verification
+  memoryStore.storeOtp(email, code, purpose, userId);
 
   if (db) {
     // Invalidate any existing unused OTPs for this user+purpose
@@ -47,12 +52,16 @@ export async function createAndSendOtp(
   console.log(`Expires in: ${OTP_EXPIRY_MINUTES} minutes`);
   console.log(`======================================================\n`);
 
-  // Attempt real email delivery
-  try {
-    await sendOtpEmail(email, code, purpose);
-    console.log(`[mailer] Email successfully delivered to ${email}`);
-  } catch (err: any) {
-    console.warn(`[mailer] Direct SMTP note: ${err.message}`);
+  // Attempt real email delivery if credentials are provided
+  if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
+    try {
+      await sendOtpEmail(email, code, purpose);
+      console.log(`[mailer] Email successfully delivered to ${email}`);
+    } catch (err: any) {
+      console.warn(`[mailer] SMTP email delivery note: ${err.message}`);
+    }
+  } else {
+    console.log(`[mailer] GMAIL_USER/GMAIL_APP_PASSWORD not set. Using server log OTP for verification.`);
   }
 
   return code;
@@ -63,6 +72,12 @@ export async function verifyOtp(
   code: string,
   purpose: 'login' | 'signup' | 'reset',
 ): Promise<{ valid: boolean; userId?: number }> {
+  // Check memoryStore first
+  const memoryResult = memoryStore.verifyOtp(email, code, purpose);
+  if (memoryResult.valid) {
+    return memoryResult;
+  }
+
   if (!db) {
     return { valid: false };
   }

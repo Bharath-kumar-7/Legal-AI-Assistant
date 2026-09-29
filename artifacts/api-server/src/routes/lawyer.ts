@@ -37,23 +37,55 @@ router.get("/lawyer/profile", async (req, res): Promise<void> => {
   try {
     const userId = req.auth!.id;
     if (!db) {
+      const { memoryStore } = await import("../lib/memoryStore");
+      let profile = memoryStore.getLawyerProfileByUserId(userId);
+      const user = memoryStore.getUserById(userId);
+
+      if (!profile) {
+        const lawyerId = `LAW-${String(100100 + userId).padStart(6, "0")}`;
+        profile = memoryStore.addLawyerProfile({
+          id: Date.now(),
+          userId,
+          lawyerId,
+          fullName: user?.fullName || req.auth!.email.split("@")[0] || "Advocate",
+          email: req.auth!.email,
+          phone: "+91 98200 44556",
+          location: "India",
+          barCouncilNumber: "PENDING",
+          barCouncilState: "Bar Council of India",
+          yearsOfExperience: 3,
+          practiceAreas: ["Civil Law", "Property Law"],
+          courtLocations: ["District Court"],
+          languages: ["English", "Hindi"],
+          bio: "Practicing advocate dedicated to legal advisory and representation.",
+          fee: 1500,
+          rating: 5.0,
+          reviews: 0,
+          verificationStatus: "PENDING",
+          accountStatus: "PENDING_VERIFICATION",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
+
       res.json({
-        lawyerId: "LAW-000101",
+        lawyerId: profile.lawyerId,
         userId: String(userId),
-        fullName: req.auth!.email.split("@")[0] || "Advocate",
-        email: req.auth!.email,
-        phone: "+91 98200 44556",
-        location: "Mumbai, Maharashtra",
-        barCouncilNumber: "MAH/4821/2012",
-        barCouncilState: "Bar Council of Maharashtra & Goa",
-        yearsOfExperience: 12,
-        practiceAreas: ["Civil Law", "Property Law", "Consumer Law"],
-        courtLocations: ["Bombay High Court", "City Civil Court Mumbai"],
-        languages: ["English", "Hindi", "Marathi"],
-        bio: "Specialist in litigation and property matters.",
-        verificationStatus: "VERIFIED",
-        accountStatus: "ACTIVE",
-        createdAt: new Date().toISOString(),
+        fullName: profile.fullName,
+        email: profile.email,
+        phone: profile.phone,
+        location: profile.location,
+        barCouncilNumber: profile.barCouncilNumber,
+        barCouncilState: profile.barCouncilState,
+        yearsOfExperience: profile.yearsOfExperience,
+        practiceAreas: profile.practiceAreas,
+        courtLocations: profile.courtLocations,
+        languages: profile.languages,
+        bio: profile.bio,
+        verificationStatus: profile.verificationStatus,
+        accountStatus: profile.accountStatus,
+        verificationMessage: profile.verificationMessage,
+        createdAt: profile.createdAt instanceof Date ? profile.createdAt.toISOString() : new Date(profile.createdAt).toISOString(),
       });
       return;
     }

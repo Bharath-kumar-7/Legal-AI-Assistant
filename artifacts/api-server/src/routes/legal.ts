@@ -226,22 +226,39 @@ router.get("/lawyers", async (req, res): Promise<void> => {
     const query = parsed.success ? parsed.data : {};
 
     if (!db) {
-      const fallbackLawyers = [
-        {
-          id: 1,
-          name: "Adv. Rohan Iyer",
-          initials: "RI",
-          specialization: "Property & Civil Law",
-          experience: 12,
-          location: "Mumbai, Maharashtra",
-          rating: 4.9,
-          reviews: 124,
-          fee: 1800,
-          verified: true,
-          availability: "Available today",
-        },
-      ];
-      res.json(ListLawyersResponse.parse(fallbackLawyers));
+      const { memoryStore } = await import("../lib/memoryStore");
+      const verifiedProfiles = memoryStore
+        .getLawyerProfiles()
+        .filter((p) => p.verificationStatus === "VERIFIED");
+
+      const list = verifiedProfiles.map((p) => ({
+        id: p.userId,
+        name: p.fullName.startsWith("Adv.") ? p.fullName : `Adv. ${p.fullName}`,
+        initials: p.fullName
+          .replace("Adv.", "")
+          .trim()
+          .split(" ")
+          .map((w) => w[0])
+          .slice(0, 2)
+          .join("")
+          .toUpperCase(),
+        specialization: p.practiceAreas[0] || "General Practice",
+        experience: p.yearsOfExperience,
+        location: p.location,
+        rating: p.rating,
+        reviews: p.reviews,
+        fee: p.fee,
+        verified: true,
+        availability: "Available today",
+      }));
+
+      const filtered = list.filter(
+        (l) =>
+          matches(`${l.name} ${l.specialization} ${l.location}`, query.search) &&
+          matches(l.specialization, query.category),
+      );
+
+      res.json(ListLawyersResponse.parse(filtered));
       return;
     }
 

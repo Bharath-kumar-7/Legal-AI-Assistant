@@ -27,15 +27,22 @@ function requireAdmin(req: Request, res: Response, next: NextFunction): void {
 
 router.use(requireAdmin);
 
+import { memoryStore } from "../lib/memoryStore";
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 router.get("/admin/dashboard", async (_req, res): Promise<void> => {
   try {
     if (!db) {
+      const users = memoryStore.getUsers();
+      const lawyers = memoryStore.getLawyerProfiles();
+      const pendingVerifs = lawyers.filter(
+        (p) => p.verificationStatus === "PENDING" || p.verificationStatus === "UNDER_REVIEW",
+      );
       res.json({
-        totalUsers: 14,
-        totalLawyers: 6,
-        activeCases: 8,
-        pendingVerifications: 2,
+        totalUsers: users.filter((u) => u.role === "client").length,
+        totalLawyers: lawyers.length,
+        activeCases: 4,
+        pendingVerifications: pendingVerifs.length,
         totalRevenue: 128000,
       });
       return;
@@ -74,25 +81,26 @@ router.get("/admin/dashboard", async (_req, res): Promise<void> => {
 // ─── Users ────────────────────────────────────────────────────────────────────
 router.get("/admin/users", async (req, res): Promise<void> => {
   try {
+    const query = (req.query.search as string) || "";
+    let usersList: Array<{ id: number; fullName: string; email: string; role: string; createdAt: Date }> = [];
+
     if (!db) {
-      res.json([]);
-      return;
+      usersList = memoryStore.getUsers().filter((u) => u.role === "client");
+    } else {
+      usersList = await db
+        .select()
+        .from(usersTable)
+        .where(eq(usersTable.role, "client"))
+        .orderBy(desc(usersTable.createdAt));
     }
 
-    const query = (req.query.search as string) || "";
-    const users = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.role, "client"))
-      .orderBy(desc(usersTable.createdAt));
-
     const filtered = query
-      ? users.filter(
+      ? usersList.filter(
           (u) =>
             u.fullName.toLowerCase().includes(query.toLowerCase()) ||
             u.email.toLowerCase().includes(query.toLowerCase()),
         )
-      : users;
+      : usersList;
 
     res.json(
       filtered.map((u) => ({
@@ -102,7 +110,7 @@ router.get("/admin/users", async (req, res): Promise<void> => {
         phone: "+91 98765 43210",
         role: u.role,
         status: "ACTIVE",
-        createdAt: u.createdAt.toISOString(),
+        createdAt: u.createdAt instanceof Date ? u.createdAt.toISOString() : new Date(u.createdAt).toISOString(),
         lastLogin: new Date().toISOString(),
       })),
     );
@@ -145,7 +153,25 @@ router.patch("/admin/users/:id/status", async (req, res): Promise<void> => {
 router.get("/admin/lawyers", async (_req, res): Promise<void> => {
   try {
     if (!db) {
-      res.json([]);
+      const memoryProfiles = memoryStore.getLawyerProfiles();
+      const result = memoryProfiles.map((p) => ({
+        id: p.lawyerId,
+        userId: p.userId,
+        name: p.fullName,
+        email: p.email,
+        phone: p.phone,
+        location: p.location,
+        barCouncilNumber: p.barCouncilNumber,
+        barCouncilState: p.barCouncilState,
+        yearsOfExperience: p.yearsOfExperience,
+        practiceAreas: p.practiceAreas,
+        courtLocations: p.courtLocations,
+        verificationStatus: p.verificationStatus,
+        accountStatus: p.accountStatus,
+        verificationMessage: p.verificationMessage,
+        submittedAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : new Date(p.createdAt).toISOString(),
+      }));
+      res.json(result);
       return;
     }
 
@@ -189,7 +215,12 @@ router.patch("/admin/lawyers/:id/verification", async (req, res): Promise<void> 
     };
 
     if (!db) {
-      res.json({ success: true });
+      const updated = memoryStore.updateLawyerVerification(lawyerIdParam, verificationStatus, message);
+      if (!updated) {
+        res.status(404).json({ error: "Lawyer profile not found" });
+        return;
+      }
+      res.json({ success: true, message: `Lawyer verification status changed to ${verificationStatus}` });
       return;
     }
 

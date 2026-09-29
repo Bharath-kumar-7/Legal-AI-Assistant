@@ -24,17 +24,6 @@ router.post('/auth/login', async (req, res): Promise<void> => {
     return;
   }
 
-  // If DB is offline, fall straight through to the mock token flow
-  if (!db) {
-    const result = await authenticate(parsed.data.email, parsed.data.password, parsed.data.role);
-    if (!result) {
-      res.status(401).json({ error: 'Email, password, or role is incorrect' });
-      return;
-    }
-    res.json(LoginResponse.parse(result));
-    return;
-  }
-
   const result = await authenticate(parsed.data.email, parsed.data.password, parsed.data.role);
   if (!result) {
     res.status(401).json({ error: 'Email, password, or role is incorrect' });
@@ -42,8 +31,12 @@ router.post('/auth/login', async (req, res): Promise<void> => {
   }
 
   // Always generate and send OTP for verification
-  await createAndSendOtp(result.user.id, result.user.email, 'login');
-  res.json({ otpSent: true, email: result.user.email });
+  const code = await createAndSendOtp(result.user.id, result.user.email, 'login');
+  res.json({
+    otpSent: true,
+    email: result.user.email,
+    devOtp: (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) ? code : undefined,
+  });
 });
 
 // ─── POST /api/auth/verify-otp ────────────────────────────────────────────────
@@ -68,7 +61,7 @@ router.post('/auth/verify-otp', async (req, res): Promise<void> => {
   }
 
   // Fetch user and return token
-  if (!db || !userId) {
+  if (!userId) {
     res.status(500).json({ error: 'Server error' });
     return;
   }
@@ -80,7 +73,10 @@ router.post('/auth/verify-otp', async (req, res): Promise<void> => {
   }
 
   // Generate token
-  const [fullUser] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  const fullUser = db
+    ? (await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1))[0]
+    : { id: user.id, fullName: user.fullName, email: user.email, role: user.role, passwordHash: 'mock', createdAt: new Date() };
+
   if (!fullUser) {
     res.status(401).json({ error: 'Account not found' });
     return;
@@ -106,40 +102,64 @@ router.post('/auth/signup', async (req, res): Promise<void> => {
       parsed.data.role,
     );
 
-    if (!db) {
-      // Offline mode — no OTP, return token directly
-      res.status(201).json(LoginResponse.parse(result));
-      return;
-    }
-
-    // If a lawyer, create a lawyer_profiles row
+    // If a lawyer, create a lawyer profile
     if (parsed.data.role === 'lawyer') {
-      try {
-        const { lawyerProfilesTable } = await import('@workspace/db');
-        const lawyerCount = await db.select().from(lawyerProfilesTable).limit(999);
-        const lawyerId = `LAW-${String(100101 + lawyerCount.length).padStart(6, '0')}`;
-        await db.insert(lawyerProfilesTable).values({
+      const lawyerId = `LAW-${String(100101 + Math.floor(Date.now() % 10000)).padStart(6, '0')}`;
+      if (db) {
+        try {
+          const { lawyerProfilesTable } = await import('@workspace/db');
+          await db.insert(lawyerProfilesTable).values({
+            userId: result.user.id,
+            lawyerId,
+            barCouncilNumber: 'PENDING',
+            barCouncilState: 'State Bar Council',
+            yearsOfExperience: 1,
+            practiceAreas: JSON.stringify(['General Practice']),
+            courtLocations: JSON.stringify(['District Court']),
+            languages: JSON.stringify(['English', 'Hindi']),
+            bio: 'Newly registered advocate awaiting verification.',
+            verificationStatus: 'PENDING',
+            accountStatus: 'PENDING_VERIFICATION',
+            location: 'India',
+          });
+        } catch (e) {
+          console.warn('[signup] Failed to create lawyer profile row in DB:', e);
+        }
+      } else {
+        const { memoryStore } = await import('../lib/memoryStore');
+        memoryStore.addLawyerProfile({
+          id: Date.now(),
           userId: result.user.id,
           lawyerId,
-          barCouncilNumber: '',
-          barCouncilState: '',
-          yearsOfExperience: 0,
-          practiceAreas: '[]',
-          courtLocations: '[]',
-          languages: '["English"]',
-          bio: '',
+          fullName: result.user.fullName,
+          email: result.user.email,
+          phone: '+91 98000 00000',
+          location: 'India',
+          barCouncilNumber: 'PENDING',
+          barCouncilState: 'State Bar Council',
+          yearsOfExperience: 1,
+          practiceAreas: ['General Practice'],
+          courtLocations: ['District Court'],
+          languages: ['English', 'Hindi'],
+          bio: 'Newly registered advocate awaiting verification.',
+          fee: 1500,
+          rating: 5.0,
+          reviews: 0,
           verificationStatus: 'PENDING',
-          accountStatus: 'ACTIVE',
-          location: '',
+          accountStatus: 'PENDING_VERIFICATION',
+          createdAt: new Date(),
+          updatedAt: new Date(),
         });
-      } catch (e) {
-        console.warn('[signup] Failed to create lawyer profile row:', e);
       }
     }
 
     // Always send OTP for account verification
-    await createAndSendOtp(result.user.id, result.user.email, 'signup');
-    res.status(201).json({ otpSent: true, email: result.user.email });
+    const code = await createAndSendOtp(result.user.id, result.user.email, 'signup');
+    res.status(201).json({
+      otpSent: true,
+      email: result.user.email,
+      devOtp: (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) ? code : undefined,
+    });
   } catch (error) {
     res.status(409).json({ error: error instanceof Error ? error.message : 'Unable to create account' });
   }

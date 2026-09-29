@@ -92,17 +92,28 @@ export async function ensureAdminAccount(): Promise<void> {
   });
 }
 
+import { memoryStore } from "./memoryStore";
+
 export async function authenticate(
   email: string,
   password: string,
   role: UserRole,
 ): Promise<{ token: string; user: PublicUser } | null> {
-  // Offline / no-DB mode — accept any credentials and return a mock user
   if (!db) {
-    const mock = MOCK_USERS.find(u => u.role === role);
-    if (!mock) return null;
-    const fakeUser = { ...mock, email: email.trim().toLowerCase() };
-    return { token: signToken(fakeUser), user: publicUser(fakeUser) };
+    const cleanEmail = email.trim().toLowerCase();
+    let user = memoryStore.getUserByEmail(cleanEmail, role);
+    if (!user) {
+      user = {
+        id: Date.now(),
+        fullName: cleanEmail.split("@")[0] || "User",
+        email: cleanEmail,
+        passwordHash: "mock",
+        role,
+        createdAt: new Date(),
+      };
+      memoryStore.addUser(user);
+    }
+    return { token: signToken(user), user: publicUser(user) };
   }
   const [user] = await db
     .select()
@@ -115,8 +126,8 @@ export async function authenticate(
 
 export async function getUserById(id: number): Promise<PublicUser | null> {
   if (!db) {
-    const mock = MOCK_USERS.find(u => u.id === id);
-    return mock ? publicUser(mock) : null;
+    const user = memoryStore.getUserById(id);
+    return user ? publicUser(user) : null;
   }
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, id)).limit(1);
   return user ? publicUser(user) : null;
@@ -129,16 +140,20 @@ export async function registerUser(
   role: Exclude<UserRole, "admin">,
 ): Promise<{ token: string; user: PublicUser }> {
   if (!db) {
-    // Offline mode — create an in-memory mock user
+    const normalizedEmail = email.trim().toLowerCase();
+    const existing = memoryStore.getUserByEmail(normalizedEmail);
+    if (existing) {
+      throw new Error("An account with this email already exists");
+    }
     const newUser: User = {
       id: Date.now(),
       fullName: fullName.trim(),
-      email: email.trim().toLowerCase(),
+      email: normalizedEmail,
       passwordHash: "mock",
       role,
       createdAt: new Date(),
     };
-    MOCK_USERS.push(newUser);
+    memoryStore.addUser(newUser);
     return { token: signToken(newUser), user: publicUser(newUser) };
   }
   const normalizedEmail = email.trim().toLowerCase();

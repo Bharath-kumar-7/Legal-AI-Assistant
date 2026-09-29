@@ -59,24 +59,13 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: SessionUser) 
   const [otpStep, setOtpStep] = useState(false);
   const [otpCode, setOtpCode] = useState('');
   const [otpEmail, setOtpEmail] = useState('');
+  const [demoCode, setDemoCode] = useState<string | null>(null);
 
   const roleOptions: Array<{ id: Role; label: string; note: string; icon: typeof Users }> = [
     { id: 'admin', label: 'Admin', note: 'Manage the platform', icon: ShieldCheck },
     { id: 'client', label: 'Client', note: 'Get legal support', icon: UserRound },
     { id: 'lawyer', label: 'Lawyer', note: 'Serve your clients', icon: Users },
   ];
-  const createFallbackUser = (): SessionUser => ({
-    id: role === 'admin' ? 1 : 101,
-    fullName:
-      fullName ||
-      (role === 'admin'
-        ? 'Nyaya Administrator'
-        : role === 'lawyer'
-        ? 'Adv. Rohan Iyer'
-        : email.split('@')[0] || 'New User'),
-    email: email.trim().toLowerCase(),
-    role,
-  });
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -84,41 +73,32 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: SessionUser) 
     setPending(true);
     setError('');
 
-    let usedFallback = false;
-    let response: Response | null = null;
-
     try {
-      response = await fetch(`/api/auth/${signup ? 'signup' : 'login'}`, {
+      const response = await fetch(`/api/auth/${signup ? 'signup' : 'login'}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(signup ? { role, fullName, email, password } : { role, email, password }),
       });
-    } catch {
-      usedFallback = true;
-    }
 
-    if (usedFallback || !response) {
-      const fallback = createFallbackUser();
-      localStorage.setItem('nyaya_token', `mock-${role}-session`);
-      localStorage.setItem('nyaya_user', JSON.stringify(fallback));
-      onAuthenticated(fallback);
-      setPending(false);
-      return;
-    }
-
-    try {
       const result = (await response.json()) as {
         token?: string;
         user?: SessionUser;
         error?: string;
         otpSent?: boolean;
         email?: string;
+        devOtp?: string;
       };
 
       if (result.otpSent) {
         setOtpStep(true);
         setOtpEmail(result.email || email);
-        setOtpCode('');
+        if (result.devOtp) {
+          setDemoCode(result.devOtp);
+          setOtpCode(result.devOtp);
+        } else {
+          setDemoCode(null);
+          setOtpCode('');
+        }
         setPending(false);
         return;
       }
@@ -130,20 +110,12 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: SessionUser) 
         return;
       }
 
-      if (result.error) {
-        setError(result.error);
-        setPending(false);
-        return;
-      }
-    } catch {
-      // ignore
+      setError(result.error || 'Authentication failed. Please check your credentials.');
+    } catch (err: any) {
+      setError(err?.message || 'Connection error. Please try again.');
+    } finally {
+      setPending(false);
     }
-
-    const fallback = createFallbackUser();
-    localStorage.setItem('nyaya_token', `mock-${role}-session`);
-    localStorage.setItem('nyaya_user', JSON.stringify(fallback));
-    onAuthenticated(fallback);
-    setPending(false);
   };
 
   const verifyOtpSubmit = async (event: React.FormEvent) => {
@@ -229,6 +201,11 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: SessionUser) 
 
         {otpStep && (
           <form onSubmit={verifyOtpSubmit} className="auth-form">
+            {demoCode && (
+              <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#166534', marginBottom: 12 }}>
+                <strong>Verification Code:</strong> <code style={{ fontWeight: 700, letterSpacing: '2px', marginLeft: 4 }}>{demoCode}</code> (auto-filled for testing)
+              </div>
+            )}
             <label className="auth-field">6-Digit Code
               <input
                 type="text"
