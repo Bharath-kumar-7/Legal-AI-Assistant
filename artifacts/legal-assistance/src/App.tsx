@@ -182,18 +182,18 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: SessionUser) 
         {!otpStep && (
           <>
             <div className="role-grid" aria-label="Choose account type">
-              {roleOptions.map(option => <button type="button" key={option.id} className={cx('role-option', role === option.id && 'role-option-active')} onClick={() => { setRole(option.id); if (option.id === 'admin') setSignup(false); }} data-testid={`button-role-${option.id}`}><span className="role-icon"><option.icon size={17} /></span><span><b>{option.label}</b><small>{option.note}</small></span>{role === option.id && <CheckCircle2 size={16} />}</button>)}
+              {roleOptions.map(option => <button type="button" key={option.id} className={cx('role-option', role === option.id && 'role-option-active')} onClick={() => { setRole(option.id); setError(''); if (option.id === 'admin') { setSignup(false); setEmail('admin@nyaya.in'); } }} data-testid={`button-role-${option.id}`}><span className="role-icon"><option.icon size={17} /></span><span><b>{option.label}</b><small>{option.note}</small></span>{role === option.id && <CheckCircle2 size={16} />}</button>)}
             </div>
             {signup && <label className="auth-field">Full name<input value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Your name" autoComplete="name" data-testid="input-signup-name" /></label>}
             <form onSubmit={submit} className="auth-form">
-              <label className="auth-field">Email address<input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" data-testid="input-auth-email" /></label>
+              <label className="auth-field">{role === 'admin' ? 'Admin Email / Username' : 'Email address'}<input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder={role === 'admin' ? 'admin@nyaya.in' : 'you@example.com'} autoComplete="email" data-testid="input-auth-email" /></label>
               <label className="auth-field">Password<input type="password" required minLength={8} value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 8 characters" autoComplete={signup ? 'new-password' : 'current-password'} data-testid="input-auth-password" /></label>
               {error && (
                 <div className="auth-error" role="alert" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <AlertCircle size={15} /> <span>{error}</span>
                   </div>
-                  {!signup && error.toLowerCase().includes('create') && (
+                  {role !== 'admin' && !signup && error.toLowerCase().includes('create') && (
                     <button
                       type="button"
                       onClick={() => { setSignup(true); setError(''); }}
