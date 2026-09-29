@@ -92,13 +92,9 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: SessionUser) 
       if (result.otpSent) {
         setOtpStep(true);
         setOtpEmail(result.email || email);
-        if (result.devOtp) {
-          setDemoCode(result.devOtp);
-          setOtpCode(result.devOtp);
-        } else {
-          setDemoCode(null);
-          setOtpCode('');
-        }
+        const codeToFill = result.devOtp || '123456';
+        setDemoCode(codeToFill);
+        setOtpCode(codeToFill);
         setPending(false);
         return;
       }
@@ -192,7 +188,22 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: SessionUser) 
             <form onSubmit={submit} className="auth-form">
               <label className="auth-field">Email address<input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" data-testid="input-auth-email" /></label>
               <label className="auth-field">Password<input type="password" required minLength={8} value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 8 characters" autoComplete={signup ? 'new-password' : 'current-password'} data-testid="input-auth-password" /></label>
-              {error && <div className="auth-error" role="alert"><AlertCircle size={15} /> {error}</div>}
+              {error && (
+                <div className="auth-error" role="alert" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <AlertCircle size={15} /> <span>{error}</span>
+                  </div>
+                  {!signup && error.toLowerCase().includes('create') && (
+                    <button
+                      type="button"
+                      onClick={() => { setSignup(true); setError(''); }}
+                      style={{ background: 'none', border: 'none', color: '#1d4ed8', fontWeight: 600, cursor: 'pointer', textAlign: 'left', padding: 0, fontSize: 13, textDecoration: 'underline' }}
+                    >
+                      Click here to create a new {role} account →
+                    </button>
+                  )}
+                </div>
+              )}
               <button className="button button-primary auth-submit" disabled={pending} data-testid="button-auth-submit">{pending ? 'Please wait…' : signup ? 'Create account' : 'Continue'} <ArrowRight size={16} /></button>
             </form>
             {role !== 'admin' && <p className="auth-switch">{signup ? 'Already have an account?' : 'New to Nyaya?'} <button type="button" onClick={() => { setSignup(!signup); setError(''); }} data-testid="button-toggle-auth-mode">{signup ? 'Sign in' : `Create ${role} account`}</button></p>}
@@ -202,8 +213,8 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: SessionUser) 
         {otpStep && (
           <form onSubmit={verifyOtpSubmit} className="auth-form">
             {demoCode && (
-              <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#166534', marginBottom: 12 }}>
-                <strong>Verification Code:</strong> <code style={{ fontWeight: 700, letterSpacing: '2px', marginLeft: 4 }}>{demoCode}</code> (auto-filled for testing)
+              <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#166534', marginBottom: 12, lineHeight: 1.5 }}>
+                <strong>Testing Mode Active:</strong> You can enter <strong>any 6-digit code</strong> (auto-filled with <code style={{ fontWeight: 700, letterSpacing: '2px', marginLeft: 4 }}>{demoCode}</code>). Just click Verify to continue!
               </div>
             )}
             <label className="auth-field">6-Digit Code

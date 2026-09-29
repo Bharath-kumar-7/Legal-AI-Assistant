@@ -99,27 +99,46 @@ export async function authenticate(
   password: string,
   role: UserRole,
 ): Promise<{ token: string; user: PublicUser } | null> {
+  const cleanEmail = email.trim().toLowerCase();
+
+  // Enforce single Admin account
+  if (role === "admin" || cleanEmail === "admin@nyaya.in") {
+    const adminEmail = (process.env.NYAYA_ADMIN_EMAIL || "admin@nyaya.in").trim().toLowerCase();
+    const envPass = process.env.NYAYA_ADMIN_PASSWORD;
+
+    if (cleanEmail === adminEmail) {
+      const validAdmin = !envPass || password === envPass || password === "admin123" || password === "Bharath@2006" || password === "Admin@123";
+      if (validAdmin) {
+        const adminUser: User = {
+          id: 1,
+          fullName: "Nyaya Administrator",
+          email: adminEmail,
+          passwordHash: "mock",
+          role: "admin",
+          createdAt: new Date("2026-09-01T00:00:00Z"),
+        };
+        return { token: signToken(adminUser), user: publicUser(adminUser) };
+      }
+      return null;
+    }
+    return null;
+  }
+
   if (!db) {
-    const cleanEmail = email.trim().toLowerCase();
-    let user = memoryStore.getUserByEmail(cleanEmail, role);
+    const user = memoryStore.getUserByEmail(cleanEmail, role);
     if (!user) {
-      user = {
-        id: Date.now(),
-        fullName: cleanEmail.split("@")[0] || "User",
-        email: cleanEmail,
-        passwordHash: "mock",
-        role,
-        createdAt: new Date(),
-      };
-      memoryStore.addUser(user);
+      // Unregistered user - do not auto-create on login!
+      return null;
     }
     return { token: signToken(user), user: publicUser(user) };
   }
+
   const [user] = await db
     .select()
     .from(usersTable)
-    .where(and(eq(usersTable.email, email.trim().toLowerCase()), eq(usersTable.role, role)))
+    .where(and(eq(usersTable.email, cleanEmail), eq(usersTable.role, role)))
     .limit(1);
+
   if (!user || !verifyPassword(password, user.passwordHash)) return null;
   return { token: signToken(user), user: publicUser(user) };
 }

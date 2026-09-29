@@ -83,7 +83,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onSuccess }) => {
                 type="email"
                 required
                 className="admin-input"
-                placeholder="admin@nyaya.legal"
+                placeholder="admin@nyaya.in"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="email"

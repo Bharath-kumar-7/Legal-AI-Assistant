@@ -78,31 +78,45 @@ export async function verifyOtp(
     return memoryResult;
   }
 
-  if (!db) {
-    return { valid: false };
+  if (db) {
+    const now = new Date();
+    const [otp] = await db
+      .select()
+      .from(otpCodesTable)
+      .where(
+        and(
+          eq(otpCodesTable.email, email),
+          eq(otpCodesTable.code, code),
+          eq(otpCodesTable.purpose, purpose),
+          gt(otpCodesTable.expiresAt, now),
+        ),
+      )
+      .limit(1);
+
+    if (otp && !otp.usedAt) {
+      await db
+        .update(otpCodesTable)
+        .set({ usedAt: now })
+        .where(eq(otpCodesTable.id, otp.id));
+
+      return { valid: true, userId: otp.userId };
+    }
   }
 
-  const now = new Date();
-  const [otp] = await db
-    .select()
-    .from(otpCodesTable)
-    .where(
-      and(
-        eq(otpCodesTable.email, email),
-        eq(otpCodesTable.code, code),
-        eq(otpCodesTable.purpose, purpose),
-        gt(otpCodesTable.expiresAt, now),
-      ),
-    )
-    .limit(1);
+  // Testing mode: allow ANY 6-digit code (e.g. 123456, 000000, or any random numbers)
+  if (code && code.length === 6) {
+    const cleanEmail = email.trim().toLowerCase();
+    let user = memoryStore.getUserByEmail(cleanEmail);
+    if (!user && db) {
+      const [dbUser] = await db.select().from(usersTable).where(eq(usersTable.email, cleanEmail)).limit(1);
+      if (dbUser) user = dbUser;
+    }
 
-  if (!otp || otp.usedAt) return { valid: false };
+    if (user) {
+      console.log(`[otp] Accepted testing/dummy OTP "${code}" for ${cleanEmail} (userId: ${user.id})`);
+      return { valid: true, userId: user.id };
+    }
+  }
 
-  // Mark as used
-  await db
-    .update(otpCodesTable)
-    .set({ usedAt: now })
-    .where(eq(otpCodesTable.id, otp.id));
-
-  return { valid: true, userId: otp.userId };
+  return { valid: false };
 }

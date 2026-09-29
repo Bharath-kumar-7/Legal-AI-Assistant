@@ -26,11 +26,17 @@ router.post('/auth/login', async (req, res): Promise<void> => {
 
   const result = await authenticate(parsed.data.email, parsed.data.password, parsed.data.role);
   if (!result) {
-    res.status(401).json({ error: 'Email, password, or role is incorrect' });
+    res.status(404).json({ error: 'No account found with these details. Please create an account first.' });
     return;
   }
 
-  // Always generate and send OTP for verification
+  // Single Admin account logs in directly
+  if (result.user.role === 'admin') {
+    res.json(LoginResponse.parse(result));
+    return;
+  }
+
+  // Always generate and send OTP for client/lawyer verification
   const code = await createAndSendOtp(result.user.id, result.user.email, 'login');
   res.json({
     otpSent: true,
