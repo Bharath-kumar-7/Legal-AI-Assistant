@@ -155,11 +155,13 @@ router.get("/dashboard", async (req, res): Promise<void> => {
       const { memoryStore } = await import("../lib/memoryStore");
       const user = memoryStore.getUserById(userId);
       const userName = user?.fullName || req.auth?.email.split("@")[0] || "Client";
+      const appts = memoryStore.getAppointmentsByClient(userId);
+      const upcoming = appts.filter((a) => a.status === "PENDING" || a.status === "CONFIRMED");
       res.json(
         GetDashboardResponse.parse({
           userName,
           openCases: 0,
-          upcomingAppointments: 0,
+          upcomingAppointments: upcoming.length,
           documents: 0,
           unreadNotifications: 0,
           recentActivity: [
@@ -506,40 +508,76 @@ router.post("/case-requests", async (req, res): Promise<void> => {
 router.get("/appointments", async (req, res): Promise<void> => {
   try {
     const userId = req.auth!.id;
-    if (!db) {
-      res.json(ListAppointmentsResponse.parse([]));
-      return;
+    const { memoryStore } = await import("../lib/memoryStore");
+
+    let appts: Array<{
+      id: number;
+      lawyerName: string;
+      lawyerInitials: string;
+      type: string;
+      date: string;
+      time: string;
+      status: string;
+      fee: number;
+    }> = [];
+
+    if (db) {
+      const dbAppts = await db
+        .select()
+        .from(appointmentsTable)
+        .where(eq(appointmentsTable.clientId, userId))
+        .orderBy(desc(appointmentsTable.createdAt));
+
+      const users = await db.select().from(usersTable);
+
+      appts = dbAppts.map((a) => {
+        const lawyer = users.find((u) => u.id === a.lawyerId);
+        const lawyerName = lawyer ? lawyer.fullName : "Adv. Rohan Iyer";
+        return {
+          id: a.id,
+          lawyerName,
+          lawyerInitials: lawyerName
+            .replace("Adv.", "")
+            .trim()
+            .split(" ")
+            .map((w) => w[0])
+            .slice(0, 2)
+            .join("")
+            .toUpperCase(),
+          type: a.type === "VIDEO" ? "Video consultation" : "Office visit",
+          date: a.date,
+          time: a.time,
+          status: a.status === "CONFIRMED" ? "Confirmed" : a.status === "COMPLETED" ? "completed" : "Pending payment",
+          fee: a.fee,
+        };
+      });
     }
 
-    const appts = await db
-      .select()
-      .from(appointmentsTable)
-      .where(eq(appointmentsTable.clientId, userId))
-      .orderBy(desc(appointmentsTable.createdAt));
+    // Merge in-memory appointments for this client (deduplicating by id)
+    const memAppts = memoryStore.getAppointmentsByClient(userId);
+    for (const ma of memAppts) {
+      if (!appts.some((a) => a.id === ma.id)) {
+        appts.unshift({
+          id: ma.id,
+          lawyerName: ma.lawyerName,
+          lawyerInitials: ma.lawyerName
+            .replace("Adv.", "")
+            .trim()
+            .split(" ")
+            .map((w) => w[0])
+            .slice(0, 2)
+            .join("")
+            .toUpperCase(),
+          type: ma.type === "VIDEO" ? "Video consultation" : "Office visit",
+          date: ma.date,
+          time: ma.time,
+          status: ma.status === "CONFIRMED" ? "Confirmed" : ma.status === "COMPLETED" ? "completed" : "Pending payment",
+          fee: ma.fee,
+        });
+      }
+    }
 
-    const users = await db.select().from(usersTable);
-
-    const result = appts.map((a) => {
-      const lawyer = users.find((u) => u.id === a.lawyerId);
-      const lawyerName = lawyer ? lawyer.fullName : "Adv. Rohan Iyer";
-      return {
-        id: a.id,
-        lawyerName,
-        lawyerInitials: lawyerName
-          .split(" ")
-          .map((w) => w[0])
-          .slice(0, 2)
-          .join("")
-          .toUpperCase(),
-        type: a.type === "VIDEO" ? "Video consultation" : "Office visit",
-        date: a.date,
-        time: a.time,
-        status: a.status === "CONFIRMED" ? "Confirmed" : "Pending payment",
-        fee: a.fee,
-      };
-    });
-
-    res.json(ListAppointmentsResponse.parse(result));
+    res.json(ListAppointmentsResponse.parse(appts));
   } catch (error) {
     console.error("Error in GET /appointments:", error);
     res.status(500).json({ error: "Failed to fetch appointments" });
@@ -557,31 +595,85 @@ router.post("/appointments", async (req, res): Promise<void> => {
     const userId = req.auth!.id;
     const apptRef = `APPT-${Date.now()}`;
     const lawyerId = parsed.data.lawyerId;
+    const { memoryStore } = await import("../lib/memoryStore");
 
+    // Client information
+    let clientName = req.auth?.email.split("@")[0] || "Client";
+    let clientEmail = req.auth?.email || "";
+    if (db) {
+      const [c] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+      if (c) {
+        clientName = c.fullName;
+        clientEmail = c.email;
+      }
+    } else {
+      const c = memoryStore.getUserById(userId);
+      if (c) {
+        clientName = c.fullName;
+        clientEmail = c.email;
+      }
+    }
+
+    // Lawyer information
     let lawyerName = "Advocate";
     if (db) {
       const [lawyer] = await db.select().from(usersTable).where(eq(usersTable.id, lawyerId)).limit(1);
       if (lawyer) lawyerName = lawyer.fullName;
+    } else {
+      const lProfile = memoryStore.getLawyerProfileByUserId(lawyerId);
+      const lUser = memoryStore.getUserById(lawyerId);
+      lawyerName = lProfile?.fullName || lUser?.fullName || "Advocate";
+    }
 
+    const isVideo = parsed.data.type.toLowerCase().includes("video");
+    const apptType: "VIDEO" | "OFFICE" = isVideo ? "VIDEO" : "OFFICE";
+    const meetingCode = `${Math.random().toString(36).substring(2, 6)}-${Math.random().toString(36).substring(2, 6)}`;
+    const meetingLink = isVideo ? `https://meet.google.com/nya-${meetingCode}` : undefined;
+
+    if (db) {
       await db.insert(appointmentsTable).values({
         apptRef,
         clientId: userId,
         lawyerId,
-        type: parsed.data.type.toLowerCase().includes("video") ? "VIDEO" : "OFFICE",
+        type: apptType,
         date: parsed.data.date,
         time: parsed.data.time,
         status: "CONFIRMED",
         fee: 1500,
+        meetingLink,
       });
 
-      const [client] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-      await notify.appointmentBooked(lawyerId, client?.fullName || "Client", parsed.data.date, parsed.data.time);
+      await notify.appointmentBooked(lawyerId, clientName, parsed.data.date, parsed.data.time);
     }
 
-    const item = {
+    // Always store in memoryStore for instant synchronization across all portals
+    const savedAppt = memoryStore.addAppointment({
       id: Date.now(),
+      apptRef,
+      clientId: userId,
+      clientName,
+      clientEmail,
+      clientPhone: "+91 98765 43210",
+      clientLocation: "India",
+      lawyerId,
+      lawyerName,
+      caseTitle: "Direct Consultation",
+      type: apptType,
+      date: parsed.data.date,
+      time: parsed.data.time,
+      status: "CONFIRMED",
+      fee: 1500,
+      meetingLink,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const item = {
+      id: savedAppt.id,
       lawyerName,
       lawyerInitials: lawyerName
+        .replace("Adv.", "")
+        .trim()
         .split(" ")
         .map((w) => w[0])
         .slice(0, 2)

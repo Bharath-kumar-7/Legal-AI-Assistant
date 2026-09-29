@@ -82,25 +82,33 @@ router.get("/admin/dashboard", async (_req, res): Promise<void> => {
 router.get("/admin/users", async (req, res): Promise<void> => {
   try {
     const query = (req.query.search as string) || "";
-    let usersList: Array<{ id: number; fullName: string; email: string; role: string; createdAt: Date }> = [];
+    const memUsers = memoryStore.getUsers().filter((u) => u.role === "client");
+    let allClients = [...memUsers];
 
-    if (!db) {
-      usersList = memoryStore.getUsers().filter((u) => u.role === "client");
-    } else {
-      usersList = await db
+    if (db) {
+      const dbUsers = await db
         .select()
         .from(usersTable)
         .where(eq(usersTable.role, "client"))
         .orderBy(desc(usersTable.createdAt));
+
+      for (const u of dbUsers) {
+        if (!allClients.some((m) => m.email.toLowerCase() === u.email.toLowerCase())) {
+          allClients.push(u);
+        }
+      }
     }
 
+    // Sort newest created first
+    allClients.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
     const filtered = query
-      ? usersList.filter(
+      ? allClients.filter(
           (u) =>
             u.fullName.toLowerCase().includes(query.toLowerCase()) ||
             u.email.toLowerCase().includes(query.toLowerCase()),
         )
-      : usersList;
+      : allClients;
 
     res.json(
       filtered.map((u) => ({
@@ -117,6 +125,74 @@ router.get("/admin/users", async (req, res): Promise<void> => {
   } catch (error) {
     console.error("Error in GET /admin/users:", error);
     res.status(500).json({ error: "Failed to fetch users" });
+  }
+});
+
+router.post("/admin/users", async (req, res): Promise<void> => {
+  try {
+    const { fullName, email, role, phone } = req.body as {
+      fullName?: string;
+      email?: string;
+      role?: string;
+      phone?: string;
+    };
+
+    if (!fullName || !email) {
+      res.status(400).json({ error: "Full name and email are required" });
+      return;
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const userRole = role === "lawyer" ? "lawyer" : "client";
+    let createdId = Date.now();
+
+    if (db) {
+      const existing = await db
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(eq(usersTable.email, cleanEmail))
+        .limit(1);
+
+      if (existing.length) {
+        createdId = existing[0].id;
+      } else {
+        const [inserted] = await db
+          .insert(usersTable)
+          .values({
+            fullName: fullName.trim(),
+            email: cleanEmail,
+            passwordHash: "mock",
+            role: userRole,
+          })
+          .returning();
+        createdId = inserted.id;
+      }
+    }
+
+    // Always store in memoryStore
+    const memUser = {
+      id: createdId,
+      fullName: fullName.trim(),
+      email: cleanEmail,
+      passwordHash: "mock",
+      role: userRole as "client" | "lawyer",
+      createdAt: new Date(),
+    };
+    memoryStore.addUser(memUser);
+
+    res.status(201).json({
+      id: `USR${createdId}`,
+      name: memUser.fullName,
+      email: memUser.email,
+      phone: phone || "+91 98765 43210",
+      role: memUser.role,
+      status: "ACTIVE",
+      createdAt: memUser.createdAt.toISOString(),
+      lastLogin: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Error in POST /admin/users:", error);
+    res.status(500).json({ error: "Failed to create user" });
   }
 });
 
@@ -152,52 +228,52 @@ router.patch("/admin/users/:id/status", async (req, res): Promise<void> => {
 // ─── Lawyers & Verification ───────────────────────────────────────────────────
 router.get("/admin/lawyers", async (_req, res): Promise<void> => {
   try {
-    if (!db) {
-      const memoryProfiles = memoryStore.getLawyerProfiles();
-      const result = memoryProfiles.map((p) => ({
-        id: p.lawyerId,
-        userId: p.userId,
-        name: p.fullName,
-        email: p.email,
-        phone: p.phone,
-        location: p.location,
-        barCouncilNumber: p.barCouncilNumber,
-        barCouncilState: p.barCouncilState,
-        yearsOfExperience: p.yearsOfExperience,
-        practiceAreas: p.practiceAreas,
-        courtLocations: p.courtLocations,
-        verificationStatus: p.verificationStatus,
-        accountStatus: p.accountStatus,
-        verificationMessage: p.verificationMessage,
-        submittedAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : new Date(p.createdAt).toISOString(),
-      }));
-      res.json(result);
-      return;
+    const memoryProfiles = memoryStore.getLawyerProfiles();
+    let result = memoryProfiles.map((p) => ({
+      id: p.lawyerId,
+      userId: p.userId,
+      name: p.fullName,
+      email: p.email,
+      phone: p.phone,
+      location: p.location,
+      barCouncilNumber: p.barCouncilNumber,
+      barCouncilState: p.barCouncilState,
+      yearsOfExperience: p.yearsOfExperience,
+      practiceAreas: p.practiceAreas,
+      courtLocations: p.courtLocations,
+      verificationStatus: p.verificationStatus,
+      accountStatus: p.accountStatus,
+      verificationMessage: p.verificationMessage,
+      submittedAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : new Date(p.createdAt).toISOString(),
+    }));
+
+    if (db) {
+      const lawyers = await db.select().from(usersTable).where(eq(usersTable.role, "lawyer"));
+      const profiles = await db.select().from(lawyerProfilesTable);
+
+      for (const u of lawyers) {
+        if (!result.some((r) => r.email.toLowerCase() === u.email.toLowerCase())) {
+          const prof = profiles.find((p) => p.userId === u.id);
+          result.push({
+            id: prof ? prof.lawyerId : `LAW${u.id}`,
+            userId: u.id,
+            name: u.fullName,
+            email: u.email,
+            phone: prof?.phone || "+91 98200 44556",
+            location: prof?.location || "India",
+            barCouncilNumber: prof?.barCouncilNumber || "PENDING",
+            barCouncilState: prof?.barCouncilState || "Bar Council of India",
+            yearsOfExperience: prof?.yearsOfExperience || 0,
+            practiceAreas: JSON.parse(prof?.practiceAreas || "[]"),
+            courtLocations: JSON.parse(prof?.courtLocations || "[]"),
+            verificationStatus: (prof?.verificationStatus as any) || "PENDING",
+            accountStatus: (prof?.accountStatus as any) || "ACTIVE",
+            verificationMessage: prof?.verificationMessage || undefined,
+            submittedAt: prof?.createdAt.toISOString() || u.createdAt.toISOString(),
+          });
+        }
+      }
     }
-
-    const lawyers = await db.select().from(usersTable).where(eq(usersTable.role, "lawyer"));
-    const profiles = await db.select().from(lawyerProfilesTable);
-
-    const result = lawyers.map((u) => {
-      const prof = profiles.find((p) => p.userId === u.id);
-      return {
-        id: prof ? prof.lawyerId : `LAW${u.id}`,
-        userId: u.id,
-        name: u.fullName,
-        email: u.email,
-        phone: prof?.phone || "+91 98200 44556",
-        location: prof?.location || "India",
-        barCouncilNumber: prof?.barCouncilNumber || "PENDING",
-        barCouncilState: prof?.barCouncilState || "Bar Council of India",
-        yearsOfExperience: prof?.yearsOfExperience || 0,
-        practiceAreas: JSON.parse(prof?.practiceAreas || "[]"),
-        courtLocations: JSON.parse(prof?.courtLocations || "[]"),
-        verificationStatus: prof?.verificationStatus || "PENDING",
-        accountStatus: prof?.accountStatus || "ACTIVE",
-        verificationMessage: prof?.verificationMessage || undefined,
-        submittedAt: prof?.createdAt.toISOString() || u.createdAt.toISOString(),
-      };
-    });
 
     res.json(result);
   } catch (error) {

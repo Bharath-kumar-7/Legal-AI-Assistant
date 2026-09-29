@@ -61,6 +61,7 @@ interface LawyerContextValue {
   // Appointments
   appointments: LawyerAppointment[];
   updateAppointmentStatus: (appointmentId: string, status: AppointmentStatus, note?: string) => void;
+  refreshAppointments: () => void;
 
   // Payments
   payments: LawyerPayment[];
@@ -149,61 +150,80 @@ export function LawyerProvider({ children }: { children: React.ReactNode }) {
   const [auditLog, setAuditLog] = useState<LawyerAuditEntry[]>(isSampleLawyer ? initialAuditLog : []);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
-  // ─── Real Database Hydration ────────────────────────────────────────────────
-  useEffect(() => {
+  // ─── Real Database Hydration & Polling ──────────────────────────────────────
+  const refreshAppointments = useCallback(() => {
     const token = localStorage.getItem('nyaya_token');
     if (!token) return;
-    const headers = { Authorization: `Bearer ${token}` };
-
-    fetch('/api/lawyer/profile', { headers })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data && data.lawyerId) setProfile((prev) => ({ ...prev, ...data }));
-      })
-      .catch(() => {});
-
-    fetch('/api/lawyer/case-requests', { headers })
+    fetch('/api/lawyer/appointments', { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (Array.isArray(data)) {
-          if (!isSampleLawyer || data.length > 0) setCaseRequests(data);
+          setAppointments(data);
         }
       })
       .catch(() => {});
+  }, []);
 
-    fetch('/api/lawyer/cases', { headers })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (Array.isArray(data)) {
-          if (!isSampleLawyer || data.length > 0) setCases(data);
-        }
-      })
-      .catch(() => {});
+  useEffect(() => {
+    const fetchLawyerData = () => {
+      const token = localStorage.getItem('nyaya_token');
+      if (!token) return;
+      const headers = { Authorization: `Bearer ${token}` };
 
-    fetch('/api/lawyer/appointments', { headers })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (Array.isArray(data)) {
-          if (!isSampleLawyer || data.length > 0) setAppointments(data);
-        }
-      })
-      .catch(() => {});
+      fetch('/api/lawyer/profile', { headers })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (data && data.lawyerId) setProfile((prev) => ({ ...prev, ...data }));
+        })
+        .catch(() => {});
 
-    fetch('/api/lawyer/notifications', { headers })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (Array.isArray(data)) {
-          if (!isSampleLawyer || data.length > 0) setNotifications(data);
-        }
-      })
-      .catch(() => {});
+      fetch('/api/lawyer/appointments', { headers })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (Array.isArray(data)) {
+            setAppointments(data);
+          }
+        })
+        .catch(() => {});
 
-    fetch('/api/lawyer/availability', { headers })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (Array.isArray(data) && data.length > 0) setAvailability(data);
-      })
-      .catch(() => {});
+      fetch('/api/lawyer/case-requests', { headers })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (Array.isArray(data)) {
+            if (!isSampleLawyer || data.length > 0) setCaseRequests(data);
+          }
+        })
+        .catch(() => {});
+
+      fetch('/api/lawyer/cases', { headers })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (Array.isArray(data)) {
+            if (!isSampleLawyer || data.length > 0) setCases(data);
+          }
+        })
+        .catch(() => {});
+
+      fetch('/api/lawyer/notifications', { headers })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (Array.isArray(data)) {
+            if (!isSampleLawyer || data.length > 0) setNotifications(data);
+          }
+        })
+        .catch(() => {});
+
+      fetch('/api/lawyer/availability', { headers })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (Array.isArray(data) && data.length > 0) setAvailability(data);
+        })
+        .catch(() => {});
+    };
+
+    fetchLawyerData();
+    const interval = setInterval(fetchLawyerData, 4000);
+    return () => clearInterval(interval);
   }, [isSampleLawyer]);
 
   // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -515,6 +535,16 @@ export function LawyerProvider({ children }: { children: React.ReactNode }) {
     setAppointments(prev =>
       prev.map(a => a.appointmentId === appointmentId ? { ...a, status, updatedAt: new Date().toISOString() } : a)
     );
+
+    const token = localStorage.getItem('nyaya_token');
+    if (token) {
+      fetch(`/api/lawyer/appointments/${appointmentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status }),
+      }).catch(() => {});
+    }
+
     const actionMap: Record<AppointmentStatus, AuditAction> = {
       CONFIRMED: 'APPOINTMENT_ACCEPTED',
       CANCELLED: 'APPOINTMENT_REJECTED',
@@ -578,6 +608,7 @@ export function LawyerProvider({ children }: { children: React.ReactNode }) {
     sendMessage,
     appointments,
     updateAppointmentStatus,
+    refreshAppointments,
     payments,
     earnings,
     notifications,

@@ -561,44 +561,76 @@ router.post("/lawyer/cases/:id/messages", async (req, res): Promise<void> => {
 router.get("/lawyer/appointments", async (req, res): Promise<void> => {
   try {
     const userId = req.auth!.id;
-    if (!db) {
-      res.json([]);
-      return;
+    const { memoryStore } = await import("../lib/memoryStore");
+
+    let result: any[] = [];
+
+    if (db) {
+      const appts = await db
+        .select()
+        .from(appointmentsTable)
+        .where(eq(appointmentsTable.lawyerId, userId))
+        .orderBy(desc(appointmentsTable.createdAt));
+
+      result = await Promise.all(
+        appts.map(async (a) => {
+          const [client] = await db!.select().from(usersTable).where(eq(usersTable.id, a.clientId)).limit(1);
+          let caseTitle = "Direct Consultation";
+          if (a.caseId) {
+            const [c] = await db!.select().from(casesTable).where(eq(casesTable.id, a.caseId)).limit(1);
+            if (c) caseTitle = c.title;
+          }
+
+          return {
+            appointmentId: a.apptRef,
+            caseId: a.caseId ? String(a.caseId) : `CASE-${a.id}`,
+            caseTitle,
+            client: {
+              clientId: String(client?.id || a.clientId),
+              name: client?.fullName || "Client",
+              email: client?.email || "",
+              phone: "+91 98765 43210",
+              location: "India",
+            },
+            type: a.type,
+            date: a.date,
+            time: a.time,
+            fee: a.fee,
+            status: a.status,
+            meetingLink: a.meetingLink || undefined,
+            createdAt: a.createdAt.toISOString(),
+            updatedAt: a.updatedAt.toISOString(),
+          };
+        }),
+      );
     }
 
-    const appts = await db
-      .select()
-      .from(appointmentsTable)
-      .where(eq(appointmentsTable.lawyerId, userId))
-      .orderBy(desc(appointmentsTable.createdAt));
-
-    const result = await Promise.all(
-      appts.map(async (a) => {
-        const [client] = await db!.select().from(usersTable).where(eq(usersTable.id, a.clientId)).limit(1);
-        let caseTitle = "Direct Consultation";
-        if (a.caseId) {
-          const [c] = await db!.select().from(casesTable).where(eq(casesTable.id, a.caseId)).limit(1);
-          if (c) caseTitle = c.title;
-        }
-
-        return {
-          appointmentId: a.apptRef,
+    // Merge in-memory appointments for this lawyer
+    const memAppts = memoryStore.getAppointmentsByLawyer(userId);
+    for (const ma of memAppts) {
+      if (!result.some((r) => r.appointmentId === ma.apptRef)) {
+        result.unshift({
+          appointmentId: ma.apptRef,
+          caseId: ma.caseId || `CASE-${ma.id}`,
+          caseTitle: ma.caseTitle || "Direct Consultation",
           client: {
-            clientId: String(client?.id || a.clientId),
-            name: client?.fullName || "Client",
-            email: client?.email || "",
-            phone: "+91 98765 43210",
+            clientId: String(ma.clientId),
+            name: ma.clientName,
+            email: ma.clientEmail,
+            phone: ma.clientPhone || "+91 98765 43210",
+            location: ma.clientLocation || "India",
           },
-          caseTitle,
-          type: a.type,
-          date: a.date,
-          time: a.time,
-          fee: a.fee,
-          status: a.status,
-          meetingLink: a.meetingLink || undefined,
-        };
-      }),
-    );
+          type: ma.type,
+          date: ma.date,
+          time: ma.time,
+          fee: ma.fee,
+          status: ma.status,
+          meetingLink: ma.meetingLink || undefined,
+          createdAt: ma.createdAt instanceof Date ? ma.createdAt.toISOString() : new Date(ma.createdAt).toISOString(),
+          updatedAt: ma.updatedAt instanceof Date ? ma.updatedAt.toISOString() : new Date(ma.updatedAt).toISOString(),
+        });
+      }
+    }
 
     res.json(result);
   } catch (error) {
@@ -611,37 +643,35 @@ router.patch("/lawyer/appointments/:id", async (req, res): Promise<void> => {
   try {
     const userId = req.auth!.id;
     const apptRef = req.params.id;
-    const { status, date, time } = req.body as { status: string; date?: string; time?: string };
+    const { status, date, time } = req.body as { status: any; date?: string; time?: string };
+    const { memoryStore } = await import("../lib/memoryStore");
 
-    if (!db) {
-      res.json({ success: true });
-      return;
-    }
+    // Always update in memory store
+    memoryStore.updateAppointmentStatus(apptRef, status, date, time);
 
-    const [a] = await db
-      .select()
-      .from(appointmentsTable)
-      .where(and(eq(appointmentsTable.apptRef, apptRef), eq(appointmentsTable.lawyerId, userId)))
-      .limit(1);
+    if (db) {
+      const [a] = await db
+        .select()
+        .from(appointmentsTable)
+        .where(and(eq(appointmentsTable.apptRef, apptRef), eq(appointmentsTable.lawyerId, userId)))
+        .limit(1);
 
-    if (!a) {
-      res.status(404).json({ error: "Appointment not found" });
-      return;
-    }
+      if (a) {
+        await db
+          .update(appointmentsTable)
+          .set({
+            status,
+            date: date || a.date,
+            time: time || a.time,
+            updatedAt: new Date(),
+          })
+          .where(eq(appointmentsTable.id, a.id));
 
-    await db
-      .update(appointmentsTable)
-      .set({
-        status,
-        date: date || a.date,
-        time: time || a.time,
-        updatedAt: new Date(),
-      })
-      .where(eq(appointmentsTable.id, a.id));
-
-    const [lawyer] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-    if (status === "CONFIRMED") {
-      await notify.appointmentConfirmed(a.clientId, lawyer?.fullName || "Lawyer", a.date, a.time);
+        const [lawyer] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+        if (status === "CONFIRMED") {
+          await notify.appointmentConfirmed(a.clientId, lawyer?.fullName || "Lawyer", a.date, a.time);
+        }
+      }
     }
 
     res.json({ success: true, message: `Appointment status updated to ${status}` });

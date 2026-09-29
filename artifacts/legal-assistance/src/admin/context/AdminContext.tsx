@@ -42,6 +42,7 @@ interface AdminContextType {
   toasts: ToastMessage[];
   addToast: (title: string, message?: string, tone?: ToastMessage['tone']) => void;
   removeToast: (id: string) => void;
+  refreshData: () => void;
 
   // User Actions
   createUser: (data: Omit<AdminUser, 'id' | 'createdAt' | 'lastLogin' | 'status'>) => void;
@@ -87,23 +88,23 @@ export const AdminProvider: React.FC<{ children: React.ReactNode; currentAdminNa
   const [settings, setSettings] = useState<PlatformSettings>(initialSettings);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  // ─── Real Database Hydration ────────────────────────────────────────────────
-  useEffect(() => {
+  // ─── Real Database Hydration & Polling ──────────────────────────────────────
+  const fetchAdminData = useCallback(() => {
     const token = localStorage.getItem('nyaya_token');
     if (!token) return;
     const headers = { Authorization: `Bearer ${token}` };
 
-    // Fetch real users (clients) from PostgreSQL
+    // Fetch real users (clients)
     fetch('/api/admin/users', { headers })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           setUsers(data);
         }
       })
       .catch(() => {});
 
-    // Fetch real lawyers from PostgreSQL
+    // Fetch real lawyers
     fetch('/api/admin/lawyers', { headers })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
@@ -121,7 +122,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode; currentAdminNa
               experienceYears: l.yearsOfExperience || 0,
               bio: l.bio || 'Advocate practicing before Indian courts.',
               verificationStatus: l.verificationStatus === 'VERIFIED' ? 'APPROVED' : l.verificationStatus,
-              accountStatus: l.accountStatus || 'ACTIVE',
+              accountStatus: l.accountStatus === 'PENDING_VERIFICATION' ? 'ACTIVE' : (l.accountStatus || 'ACTIVE'),
               createdAt: l.submittedAt,
               documents: [],
             }))
@@ -130,6 +131,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode; currentAdminNa
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    fetchAdminData();
+    const interval = setInterval(fetchAdminData, 4000);
+    return () => clearInterval(interval);
+  }, [fetchAdminData]);
 
   const addToast = useCallback((title: string, message?: string, tone: ToastMessage['tone'] = 'success') => {
     const id = `toast-${Date.now()}-${Math.random()}`;
@@ -161,6 +168,28 @@ export const AdminProvider: React.FC<{ children: React.ReactNode; currentAdminNa
     (data: Omit<AdminUser, 'id' | 'createdAt' | 'lastLogin' | 'status'>) => {
       const newUser = adminUsersService.createUser(users, data);
       setUsers((prev) => [newUser, ...prev]);
+
+      const token = localStorage.getItem('nyaya_token');
+      if (token) {
+        fetch('/api/admin/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            fullName: data.name,
+            email: data.email,
+            phone: data.phone,
+            role: data.role || 'client',
+          }),
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((saved) => {
+            if (saved && saved.id) {
+              setUsers((prev) => prev.map((u) => (u.email === data.email ? { ...u, id: saved.id } : u)));
+            }
+          })
+          .catch(() => {});
+      }
+
       logAudit({
         action: 'CREATE_USER',
         entityType: 'USER',
@@ -498,6 +527,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode; currentAdminNa
       updateSettings,
       addSpecialization,
       removeSpecialization,
+      refreshData: fetchAdminData,
     }),
     [
       users,
@@ -528,6 +558,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode; currentAdminNa
       updateSettings,
       addSpecialization,
       removeSpecialization,
+      fetchAdminData,
     ]
   );
 

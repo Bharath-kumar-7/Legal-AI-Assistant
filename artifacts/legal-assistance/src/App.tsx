@@ -317,18 +317,38 @@ function Dashboard() {
   })();
   const dashboard = useGetDashboard();
   const news = useListNews();
+  const apptsQuery = useListAppointments();
   const d = dashboard.data;
   const newsItems = news.data || [];
   const userName = sessionUser?.fullName || d?.userName || 'Client';
+  const nextAppt = (apptsQuery.data || []).find(a => a.status !== 'completed');
 
   return <><PageHeader eyebrow="NYAYA / CITIZEN DESK" title={`Good morning, ${userName}.`} description="Here’s your legal workspace at a glance." action={<button className="button button-primary" onClick={() => window.location.href = '/assistant'} data-testid="button-dashboard-assistant"><Sparkles size={16} /> Ask Nyaya</button>} />
     {dashboard.isLoading ? <LoadingRows count={3} /> : dashboard.isError ? <ErrorState retry={() => dashboard.refetch()} /> : <div className="dashboard-grid">
       <Card className="welcome-card"><div className="welcome-copy"><Pill tone="gold">YOUR LEGAL COMPASS</Pill><h2>Clarity for the road ahead.</h2><p>Understand your rights, organise your case, and connect with the right support — all in one considered workspace.</p><Link href="/assistant" className="button button-ink" data-testid="link-welcome-assistant">Start with a question <ArrowRight size={16} /></Link></div><div className="compass-art"><div className="compass-ring"><span>N</span><span>E</span><span>S</span><span>W</span><i /></div></div></Card>
       <div className="stat-grid"><Stat icon={BriefcaseBusiness} label="Open cases" value={d?.openCases ?? 0} note="Keep your progress moving" /><Stat icon={CalendarDays} label="Appointments" value={d?.upcomingAppointments ?? 0} note="Upcoming consultations" tone="teal" /><Stat icon={FileText} label="Documents" value={d?.documents ?? 0} note="Securely stored files" tone="gold" /></div>
-      {d?.upcomingAppointments && d.upcomingAppointments > 0 ? (
-        <Card className="appointment-card"><div className="card-heading"><div><span className="section-kicker">NEXT UP</span><h3>Upcoming appointment</h3></div><Link href="/appointments" className="quiet-link" data-testid="link-dashboard-appointments">View all <ArrowRight size={14} /></Link></div><div className="appointment-main"><div className="date-tile"><b>28</b><span>OCT</span></div><div><h4>Consultation with Advocate</h4><p><Video size={14} /> Video consultation · 11:30 AM</p><Pill tone="teal">Confirmed</Pill></div><Link href="/appointments" className="icon-button bordered-icon" title="Open appointment" data-testid="button-open-next-appointment"><ArrowRight size={17} /></Link></div></Card>
+      {nextAppt ? (
+        <Card className="appointment-card">
+          <div className="card-heading"><div><span className="section-kicker">NEXT UP</span><h3>Upcoming appointment</h3></div><Link href="/appointments" className="quiet-link" data-testid="link-dashboard-appointments">View all <ArrowRight size={14} /></Link></div>
+          <div className="appointment-main">
+            <div className="date-tile"><b>{new Date(nextAppt.date).getDate() || '—'}</b><span>{new Date(nextAppt.date).toLocaleDateString('en-IN', { month: 'short' }).toUpperCase()}</span></div>
+            <div>
+              <h4>Consultation with {nextAppt.lawyerName}</h4>
+              <p><Video size={14} /> {nextAppt.type} · {nextAppt.time}</p>
+              <Pill tone="teal">{nextAppt.status}</Pill>
+            </div>
+            <Link href="/appointments" className="icon-button bordered-icon" title="Open appointment" data-testid="button-open-next-appointment"><ArrowRight size={17} /></Link>
+          </div>
+        </Card>
       ) : (
-        <Card className="appointment-card"><div className="card-heading"><div><span className="section-kicker">NEXT UP</span><h3>Upcoming appointment</h3></div><Link href="/lawyers" className="quiet-link" data-testid="link-dashboard-appointments">Browse lawyers <ArrowRight size={14} /></Link></div><div className="appointment-main"><div className="date-tile"><b>—</b><span>NONE</span></div><div><h4>No consultations scheduled</h4><p>Find and book a verified advocate anytime.</p><Pill tone="neutral">Available</Pill></div><Link href="/lawyers" className="icon-button bordered-icon" title="Find advocates" data-testid="button-open-next-appointment"><ArrowRight size={17} /></Link></div></Card>
+        <Card className="appointment-card">
+          <div className="card-heading"><div><span className="section-kicker">NEXT UP</span><h3>Upcoming appointment</h3></div><Link href="/lawyers" className="quiet-link" data-testid="link-dashboard-appointments">Browse lawyers <ArrowRight size={14} /></Link></div>
+          <div className="appointment-main">
+            <div className="date-tile"><b>—</b><span>NONE</span></div>
+            <div><h4>No consultations scheduled</h4><p>Find and book a verified advocate anytime.</p><Pill tone="neutral">Available</Pill></div>
+            <Link href="/lawyers" className="icon-button bordered-icon" title="Find advocates" data-testid="button-open-next-appointment"><ArrowRight size={17} /></Link>
+          </div>
+        </Card>
       )}
       <Card className="activity-card"><div className="card-heading"><div><span className="section-kicker">YOUR TRAIL</span><h3>Recent activity</h3></div><Link href="/cases" className="quiet-link" data-testid="link-dashboard-cases">See cases <ArrowRight size={14} /></Link></div>{d?.recentActivity?.length ? <div className="activity-list">{d.recentActivity.slice(0, 4).map((a, i) => <div className="activity-row" key={a.id} data-testid={`activity-row-${a.id}`}><span className={`activity-symbol activity-${a.type}`}><Activity size={15} /></span><div><strong>{a.title}</strong><p>{a.detail}</p></div><time>{formatDate(a.timestamp)}</time></div>)}</div> : <EmptyState icon={Activity} title="Your trail starts here" text="Actions from your workspace will appear in this timeline." />}</Card>
       <Card className="news-card"><div className="card-heading"><div><span className="section-kicker">STAY INFORMED</span><h3>Legal signals</h3></div><Link href="/library" className="quiet-link" data-testid="link-dashboard-library">Research <ArrowRight size={14} /></Link></div>{news.isLoading ? <LoadingRows count={2} /> : newsItems.slice(0, 3).map(n => <div className="news-row" key={n.id} data-testid={`news-row-${n.id}`}><Pill tone="gold">{n.category}</Pill><div><strong>{n.title}</strong><p>{n.summary}</p></div><span>{n.readTime}</span></div>)}</Card>
@@ -361,7 +381,61 @@ function Lawyers() {
   return <><PageHeader eyebrow="NYAYA / NETWORK" title="Find the right advocate." description="Verified legal professionals, matched to the matter in front of you." /><div className="directory-toolbar"><div className="search-field"><Search size={17} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, location or expertise" data-testid="input-lawyer-search" /></div><select value={category} onChange={e => setCategory(e.target.value)} className="select-control" data-testid="select-lawyer-category"><option value="">All specialisations</option><option value="Civil">Civil law</option><option value="Criminal">Criminal law</option><option value="Family">Family law</option><option value="Property">Property law</option></select></div>{lawyers.isError ? <ErrorState retry={() => lawyers.refetch()} /> : lawyers.isLoading ? <LoadingRows count={5} /> : lawyers.data?.length ? <div className="lawyer-grid">{lawyers.data.map(lawyer => <LawyerCard key={lawyer.id} lawyer={lawyer} onBook={() => setBooking(lawyer)} />)}</div> : <EmptyState icon={Users} title="No advocates found" text="Try adjusting your search or specialisation." />}{booking && <BookingModal lawyer={booking} onClose={() => setBooking(null)} />}</>;
 }
 function LawyerCard({ lawyer, onBook }: { lawyer: Lawyer; onBook: () => void }) { return <Card className="lawyer-card" data-testid={`lawyer-card-${lawyer.id}`}><div className="lawyer-top"><div className="avatar avatar-large avatar-teal">{lawyer.initials || initials(lawyer.name)}</div>{lawyer.verified && <span className="verified"><CheckCircle2 size={14} /> Verified</span>}</div><h3>{lawyer.name}</h3><p className="lawyer-specialty">{lawyer.specialization}</p><div className="lawyer-facts"><span><MapPin size={14} /> {lawyer.location}</span><span><BriefcaseBusiness size={14} /> {lawyer.experience} years</span></div><div className="lawyer-rating"><Star size={14} fill="currentColor" /> <b>{lawyer.rating}</b><span>({lawyer.reviews} reviews)</span><span className="fee"><IndianRupee size={13} /> {lawyer.fee} / consult</span></div><div className="availability"><i /> {lawyer.availability}</div><button className="button button-primary full-width" onClick={onBook} data-testid={`button-book-lawyer-${lawyer.id}`}>Book consultation <ArrowRight size={15} /></button></Card>; }
-function BookingModal({ lawyer, onClose }: { lawyer: Lawyer; onClose: () => void }) { const create = useCreateAppointment(); const client = useQueryClient(); const [type, setType] = useState('Video consultation'); const [date, setDate] = useState('2024-10-28'); const [time, setTime] = useState('11:30 AM'); const submit = () => create.mutate({ data: { lawyerId: lawyer.id, type, date, time } }, { onSuccess: () => { client.invalidateQueries({ queryKey: getListAppointmentsQueryKey() }); onClose(); } }); return <div className="modal-backdrop"><div className="modal"><button className="modal-close icon-button" onClick={onClose} aria-label="Close" data-testid="button-close-booking"><X size={18} /></button><span className="section-kicker">BOOK A CONSULTATION</span><h2>Meet {lawyer.name}</h2><p className="modal-subtitle">Choose a format and a time that works for you.</p><label>Consultation format<select value={type} onChange={e => setType(e.target.value)} className="select-control" data-testid="select-appointment-type"><option>Video consultation</option><option>Office consultation</option></select></label><label>Date<input type="date" value={date} onChange={e => setDate(e.target.value)} data-testid="input-appointment-date" /></label><label>Preferred time<select value={time} onChange={e => setTime(e.target.value)} className="select-control" data-testid="select-appointment-time"><option>11:30 AM</option><option>2:00 PM</option><option>4:30 PM</option></select></label><button className="button button-primary full-width modal-submit" onClick={submit} disabled={create.isPending} data-testid="button-confirm-appointment">{create.isPending ? 'Booking…' : 'Confirm appointment'} <ArrowRight size={16} /></button></div></div>; }
+function BookingModal({ lawyer, onClose }: { lawyer: Lawyer; onClose: () => void }) {
+  const create = useCreateAppointment();
+  const client = useQueryClient();
+  const [type, setType] = useState('Video consultation');
+  const [date, setDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split('T')[0];
+  });
+  const [time, setTime] = useState('11:30 AM');
+  const submit = () => create.mutate(
+    { data: { lawyerId: lawyer.id, type, date, time } },
+    {
+      onSuccess: () => {
+        client.invalidateQueries({ queryKey: getListAppointmentsQueryKey() });
+        client.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+        onClose();
+      },
+    }
+  );
+  return (
+    <div className="modal-backdrop">
+      <div className="modal">
+        <button className="modal-close icon-button" onClick={onClose} aria-label="Close" data-testid="button-close-booking">
+          <X size={18} />
+        </button>
+        <span className="section-kicker">BOOK A CONSULTATION</span>
+        <h2>Meet {lawyer.name}</h2>
+        <p className="modal-subtitle">Choose a format and a time that works for you.</p>
+        <label>
+          Consultation format
+          <select value={type} onChange={e => setType(e.target.value)} className="select-control" data-testid="select-appointment-type">
+            <option>Video consultation</option>
+            <option>Office consultation</option>
+          </select>
+        </label>
+        <label>
+          Date
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} data-testid="input-appointment-date" />
+        </label>
+        <label>
+          Preferred time
+          <select value={time} onChange={e => setTime(e.target.value)} className="select-control" data-testid="select-appointment-time">
+            <option>11:30 AM</option>
+            <option>2:00 PM</option>
+            <option>4:30 PM</option>
+          </select>
+        </label>
+        <button className="button button-primary full-width modal-submit" onClick={submit} disabled={create.isPending} data-testid="button-confirm-appointment">
+          {create.isPending ? 'Booking…' : 'Confirm appointment'} <ArrowRight size={16} />
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function Cases() {
   const cases = useListCases(); const create = useCreateCase(); const update = useUpdateCase(); const client = useQueryClient(); const [show, setShow] = useState(false); const [selected, setSelected] = useState<Case | null>(null);

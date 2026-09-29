@@ -1,4 +1,4 @@
-﻿import type { User } from "@workspace/db";
+import type { User } from "@workspace/db";
 
 export interface MemoryLawyerProfile {
   id: number;
@@ -31,6 +31,29 @@ export interface MemoryOtp {
   userId: number;
   expiresAt: Date;
   used: boolean;
+}
+
+export interface MemoryAppointment {
+  id: number;
+  apptRef: string;
+  clientId: number;
+  clientName: string;
+  clientEmail: string;
+  clientPhone: string;
+  clientLocation: string;
+  lawyerId: number;
+  lawyerName: string;
+  caseId?: string;
+  caseTitle: string;
+  type: "VIDEO" | "OFFICE" | "PHONE";
+  date: string;
+  time: string;
+  status: "PENDING" | "CONFIRMED" | "CANCELLED" | "COMPLETED" | "RESCHEDULED";
+  fee: number;
+  meetingLink?: string;
+  notes?: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 const initialUsers: User[] = [
@@ -231,9 +254,34 @@ const initialProfiles: MemoryLawyerProfile[] = [
   },
 ];
 
+const initialAppointments: MemoryAppointment[] = [
+  {
+    id: 1,
+    apptRef: "APPT-2026-001",
+    clientId: 101,
+    clientName: "Rahul Sharma",
+    clientEmail: "client@nyaya.in",
+    clientPhone: "+91 98765 43210",
+    clientLocation: "Mumbai, Maharashtra",
+    lawyerId: 201,
+    lawyerName: "Adv. Rohan Iyer",
+    caseId: "CASE-10024",
+    caseTitle: "Property boundary dispute with neighbour",
+    type: "VIDEO",
+    date: "2026-09-21",
+    time: "11:30 AM",
+    status: "CONFIRMED",
+    fee: 1800,
+    meetingLink: "https://meet.google.com/nya-law-meet",
+    createdAt: new Date("2026-09-08T10:00:00Z"),
+    updatedAt: new Date("2026-09-08T10:00:00Z"),
+  },
+];
+
 class MemoryStore {
   private users: User[] = [...initialUsers];
   private profiles: MemoryLawyerProfile[] = [...initialProfiles];
+  private appointments: MemoryAppointment[] = [...initialAppointments];
   private otps: Map<string, MemoryOtp> = new Map();
 
   getUsers(): User[] {
@@ -325,6 +373,43 @@ class MemoryStore {
 
     entry.used = true;
     return { valid: true, userId: entry.userId };
+  }
+
+  getAppointments(): MemoryAppointment[] {
+    return [...this.appointments];
+  }
+
+  getAppointmentsByLawyer(lawyerId: number): MemoryAppointment[] {
+    return this.appointments.filter((a) => a.lawyerId === lawyerId);
+  }
+
+  getAppointmentsByClient(clientId: number): MemoryAppointment[] {
+    return this.appointments.filter((a) => a.clientId === clientId);
+  }
+
+  addAppointment(appt: MemoryAppointment): MemoryAppointment {
+    const existingIndex = this.appointments.findIndex((a) => a.apptRef === appt.apptRef);
+    if (existingIndex >= 0) {
+      this.appointments[existingIndex] = { ...this.appointments[existingIndex], ...appt };
+      return this.appointments[existingIndex];
+    }
+    this.appointments.unshift(appt);
+    return appt;
+  }
+
+  updateAppointmentStatus(
+    apptRef: string,
+    status: "PENDING" | "CONFIRMED" | "CANCELLED" | "COMPLETED" | "RESCHEDULED",
+    date?: string,
+    time?: string,
+  ): MemoryAppointment | null {
+    const appt = this.appointments.find((a) => a.apptRef === apptRef);
+    if (!appt) return null;
+    appt.status = status;
+    if (date) appt.date = date;
+    if (time) appt.time = time;
+    appt.updatedAt = new Date();
+    return appt;
   }
 }
 

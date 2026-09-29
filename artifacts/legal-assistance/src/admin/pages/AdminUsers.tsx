@@ -34,6 +34,7 @@ export const AdminUsers: React.FC = () => {
     restoreUser,
     deactivateUser,
     addToast,
+    refreshData,
   } = useAdmin();
 
   const [search, setSearch] = useState('');
@@ -250,7 +251,15 @@ export const AdminUsers: React.FC = () => {
             Search, filter, view profile dossiers, manage temporary suspensions, and perform compliant soft-deletions.
           </p>
         </div>
-        <div className="header-actions">
+        <div className="header-actions" style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
+          <button
+            type="button"
+            className="admin-btn admin-btn-secondary"
+            onClick={() => refreshData()}
+            title="Refresh directory from server"
+          >
+            <RotateCcw size={15} /> Refresh
+          </button>
           <button
             type="button"
             className="admin-btn admin-btn-primary"

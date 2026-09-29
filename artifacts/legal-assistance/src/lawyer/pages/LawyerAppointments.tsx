@@ -17,7 +17,7 @@ const STATUS_PILL: Record<string, string> = {
 };
 
 export function LawyerAppointments() {
-  const { appointments, updateAppointmentStatus } = useLawyer();
+  const { appointments, updateAppointmentStatus, refreshAppointments } = useLawyer();
   const [tab, setTab] = useState<'upcoming' | 'past' | 'all'>('upcoming');
   const [actionAppt, setActionAppt] = useState<string | null>(null);
   const [rescheduleDate, setRescheduleDate] = useState('');
@@ -35,12 +35,20 @@ export function LawyerAppointments() {
 
   return (
     <div className="lp-page">
-      <div className="lp-page-header">
+      <div className="lp-page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <span className="lp-eyebrow">NYAYA / CALENDAR</span>
           <h1>Appointments</h1>
           <p>Manage your consultations and client meetings.</p>
         </div>
+        <button
+          className="lp-btn lp-btn-secondary"
+          onClick={() => refreshAppointments()}
+          title="Refresh appointments"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+        >
+          <RotateCcw size={15} /> Refresh
+        </button>
       </div>
 
       <div className="lp-tabs">
