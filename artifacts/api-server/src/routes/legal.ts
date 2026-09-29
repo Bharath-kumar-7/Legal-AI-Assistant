@@ -152,17 +152,18 @@ router.get("/dashboard", async (req, res): Promise<void> => {
   try {
     const userId = req.auth!.id;
     if (!db) {
+      const { memoryStore } = await import("../lib/memoryStore");
+      const user = memoryStore.getUserById(userId);
+      const userName = user?.fullName || req.auth?.email.split("@")[0] || "Client";
       res.json(
         GetDashboardResponse.parse({
-          userName: "Bharath",
-          openCases: 3,
-          upcomingAppointments: 2,
-          documents: 3,
-          unreadNotifications: 2,
+          userName,
+          openCases: 0,
+          upcomingAppointments: 0,
+          documents: 0,
+          unreadNotifications: 0,
           recentActivity: [
-            { id: 1, title: "Case update", detail: "Property boundary dispute moved to lawyer review", timestamp: "2 hours ago", type: "case" },
-            { id: 2, title: "Document added", detail: "Property deed — survey 104 is ready for review", timestamp: "Yesterday", type: "document" },
-            { id: 3, title: "Appointment confirmed", detail: "Video consultation with Adv. Rohan Iyer", timestamp: "Yesterday", type: "appointment" },
+            { id: 1, title: "Welcome to Nyaya", detail: "Your personal legal desk is ready.", timestamp: "Today", type: "case" },
           ],
         }),
       );

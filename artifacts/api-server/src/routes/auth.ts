@@ -38,8 +38,12 @@ router.post('/auth/login', async (req, res): Promise<void> => {
     return;
   }
 
-  // Single Admin account logs in directly
+  // Single Admin account logs in directly (only if role is admin)
   if (result.user.role === 'admin') {
+    if (parsed.data.role !== 'admin') {
+      res.status(403).json({ error: 'Cannot log in with administrator credentials for this role.' });
+      return;
+    }
     res.json(LoginResponse.parse(result));
     return;
   }

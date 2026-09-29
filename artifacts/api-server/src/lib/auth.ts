@@ -100,13 +100,13 @@ export async function authenticate(
   role: UserRole,
 ): Promise<{ token: string; user: PublicUser } | null> {
   const cleanEmail = email.trim().toLowerCase();
+  const adminEmail = (process.env.NYAYA_ADMIN_EMAIL || "admin@nyaya.in").trim().toLowerCase();
 
-  // Enforce single Admin account
-  if (role === "admin" || cleanEmail === "admin@nyaya.in" || cleanEmail === "admin") {
-    const adminEmail = (process.env.NYAYA_ADMIN_EMAIL || "admin@nyaya.in").trim().toLowerCase();
+  // Enforce single Admin account - ONLY allowed when role is 'admin'
+  if (role === "admin") {
     const envPass = process.env.NYAYA_ADMIN_PASSWORD;
 
-    const isAdminUser = cleanEmail === adminEmail || cleanEmail === "admin" || cleanEmail.includes("admin");
+    const isAdminUser = cleanEmail === adminEmail || cleanEmail === "admin";
     if (isAdminUser) {
       const validAdmin = !envPass || password === envPass || password === "admin123" || password === "Bharath@2006" || password === "Admin@123" || password === "admin";
       if (validAdmin) {
@@ -120,8 +120,12 @@ export async function authenticate(
         };
         return { token: signToken(adminUser), user: publicUser(adminUser) };
       }
-      return null;
     }
+    return null;
+  }
+
+  // If role is NOT admin (role is 'client' or 'lawyer'), admin credentials cannot log in
+  if (cleanEmail === adminEmail || cleanEmail === "admin") {
     return null;
   }
 
