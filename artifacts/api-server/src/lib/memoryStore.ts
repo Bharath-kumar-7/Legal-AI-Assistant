@@ -121,6 +121,30 @@ export interface MemoryDocument {
   createdAt: Date;
 }
 
+export interface MemoryNote {
+  id: number;
+  noteId: string;
+  caseId: string;
+  lawyerId: string;
+  title: string;
+  content: string;
+  isPrivate?: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface MemoryMessage {
+  id: number;
+  messageId: string;
+  caseId: string;
+  senderId: string;
+  senderRole: "CLIENT" | "LAWYER";
+  senderName: string;
+  text: string;
+  sentAt: Date;
+  readAt?: Date;
+}
+
 const initialUsers: User[] = [
   {
     id: 1,
@@ -490,6 +514,43 @@ class MemoryStore {
   private cases: MemoryCase[] = [...initialCases];
   private caseRequests: MemoryCaseRequest[] = [...initialCaseRequests];
   private documents: MemoryDocument[] = [...initialDocuments];
+  private notes: MemoryNote[] = [
+    {
+      id: 1,
+      noteId: "NOTE-001",
+      caseId: "CASE-10024",
+      lawyerId: "201",
+      title: "Title deed analysis & demarcation strategy",
+      content: "Demarcation in 2018 survey registry confirms client's ownership. Advised client to collect CTS plan from municipal ward office.",
+      isPrivate: true,
+      createdAt: new Date("2026-09-10T12:00:00Z"),
+      updatedAt: new Date("2026-09-10T12:00:00Z"),
+    },
+  ];
+  private messages: MemoryMessage[] = [
+    {
+      id: 1,
+      messageId: "MSG-001",
+      caseId: "CASE-10024",
+      senderId: "101",
+      senderRole: "CLIENT",
+      senderName: "Rahul Sharma",
+      text: "Sir, I have uploaded the latest demarcation survey map as requested.",
+      sentAt: new Date("2026-09-09T11:05:00Z"),
+      readAt: new Date("2026-09-09T11:30:00Z"),
+    },
+    {
+      id: 2,
+      messageId: "MSG-002",
+      caseId: "CASE-10024",
+      senderId: "201",
+      senderRole: "LAWYER",
+      senderName: "Adv. Rohan Iyer",
+      text: "Received Rahul. The survey report strongly supports our boundary claims. We are preparing the draft notice.",
+      sentAt: new Date("2026-09-09T11:35:00Z"),
+      readAt: new Date("2026-09-09T11:40:00Z"),
+    },
+  ];
   private otps: Map<string, MemoryOtp> = new Map();
 
   getUsers(): User[] {
@@ -722,6 +783,44 @@ class MemoryStore {
     const initialLen = this.documents.length;
     this.documents = this.documents.filter((d) => d.docRef !== docRef);
     return this.documents.length < initialLen;
+  }
+
+  getNotesByCase(caseIdOrRef: string | number): MemoryNote[] {
+    return this.notes.filter(
+      (n) => n.caseId === String(caseIdOrRef) || n.caseId === `CASE-${caseIdOrRef}` || `CASE-${n.caseId}` === String(caseIdOrRef),
+    );
+  }
+
+  addNote(note: MemoryNote): MemoryNote {
+    const existingIndex = this.notes.findIndex((n) => n.noteId === note.noteId);
+    if (existingIndex >= 0) {
+      this.notes[existingIndex] = { ...this.notes[existingIndex], ...note };
+      return this.notes[existingIndex];
+    }
+    this.notes.unshift(note);
+    return note;
+  }
+
+  deleteNote(caseIdOrRef: string | number, noteId: string): boolean {
+    const initialLen = this.notes.length;
+    this.notes = this.notes.filter((n) => n.noteId !== noteId);
+    return this.notes.length < initialLen;
+  }
+
+  getMessagesByCase(caseIdOrRef: string | number): MemoryMessage[] {
+    return this.messages.filter(
+      (m) => m.caseId === String(caseIdOrRef) || m.caseId === `CASE-${caseIdOrRef}` || `CASE-${m.caseId}` === String(caseIdOrRef),
+    );
+  }
+
+  addMessage(msg: MemoryMessage): MemoryMessage {
+    const existingIndex = this.messages.findIndex((m) => m.messageId === msg.messageId);
+    if (existingIndex >= 0) {
+      this.messages[existingIndex] = { ...this.messages[existingIndex], ...msg };
+      return this.messages[existingIndex];
+    }
+    this.messages.push(msg);
+    return msg;
   }
 }
 

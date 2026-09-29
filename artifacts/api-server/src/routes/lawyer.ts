@@ -252,13 +252,18 @@ router.get("/lawyer/case-requests", async (req, res): Promise<void> => {
             status: r.status,
             caseTitle: c?.title || "Legal Matter",
             caseCategory: c?.category || "General",
-            oppositeParty: c?.oppositeParty || undefined,
-            description: c?.description || "",
+            oppositeParty: c?.oppositeParty || "Opposing Party",
+            description: c?.description || r.clientMessage || "",
+            location: "District Court, New Delhi",
+            relevantDates: "Immediate / Ongoing",
+            preferredConsultation: "VIDEO" as const,
+            requestedAt: r.createdAt.toISOString(),
             submittedAt: r.createdAt.toISOString(),
             decidedAt: r.decidedAt ? r.decidedAt.toISOString() : undefined,
-            conflictChecked: r.conflictChecked,
+            conflictChecked: r.conflictChecked ?? false,
             rejectReason: r.rejectReason || undefined,
             infoRequest: r.infoRequest || undefined,
+            infoRequests: [],
             client: {
               clientId: String(client?.id || r.clientId),
               name: client?.fullName || "Client",
@@ -266,15 +271,16 @@ router.get("/lawyer/case-requests", async (req, res): Promise<void> => {
               phone: "+91 98765 43210",
               location: "India",
             },
-            documents: docs.map((d) => ({
+            documents: (docs || []).map((d) => ({
               docId: d.docRef,
+              caseId: c ? c.caseRef : String(r.caseId),
               name: d.name,
-              fileName: d.fileName,
-              fileType: d.fileType,
-              fileSize: d.fileSize,
-              category: d.category,
-              uploadedBy: d.uploadedByRole,
-              uploadedByName: "Client",
+              fileName: d.fileName || `${d.name}.pdf`,
+              fileType: d.fileType || "PDF",
+              fileSize: d.fileSize || "1 MB",
+              category: d.category || "CLIENT_DOCUMENT",
+              uploadedBy: d.uploadedByRole || "CLIENT",
+              uploadedByName: client?.fullName || "Client",
               uploadedAt: d.createdAt.toISOString(),
             })),
           };
@@ -293,28 +299,34 @@ router.get("/lawyer/case-requests", async (req, res): Promise<void> => {
           status: mr.status,
           caseTitle: mr.caseTitle,
           caseCategory: mr.caseCategory,
-          oppositeParty: mr.oppositeParty || undefined,
-          description: mr.description,
+          oppositeParty: mr.oppositeParty || "Opposing Party",
+          description: mr.description || mr.clientMessage || "",
+          location: mr.clientLocation || "District Court, New Delhi",
+          relevantDates: "Immediate / Ongoing",
+          preferredConsultation: "VIDEO" as const,
+          requestedAt: mr.createdAt instanceof Date ? mr.createdAt.toISOString() : new Date(mr.createdAt).toISOString(),
           submittedAt: mr.createdAt instanceof Date ? mr.createdAt.toISOString() : new Date(mr.createdAt).toISOString(),
           decidedAt: mr.decidedAt ? (mr.decidedAt instanceof Date ? mr.decidedAt.toISOString() : new Date(mr.decidedAt).toISOString()) : undefined,
           conflictChecked: mr.conflictChecked ?? false,
           rejectReason: mr.rejectReason || undefined,
           infoRequest: mr.infoRequest || undefined,
+          infoRequests: mr.infoRequests || [],
           client: {
             clientId: String(mr.clientId),
             name: mr.clientName,
             email: mr.clientEmail,
-            phone: mr.clientPhone,
+            phone: mr.clientPhone || "+91 98765 43210",
             location: mr.clientLocation || "India",
           },
-          documents: memDocs.map((d) => ({
+          documents: (memDocs || []).map((d) => ({
             docId: d.docRef,
+            caseId: mr.caseRef || `CASE-${mr.caseId}`,
             name: d.name,
-            fileName: d.fileName,
-            fileType: d.fileType,
-            fileSize: d.fileSize,
-            category: d.category,
-            uploadedBy: d.uploadedByRole,
+            fileName: d.fileName || `${d.name}.pdf`,
+            fileType: d.fileType || "PDF",
+            fileSize: d.fileSize || "1 MB",
+            category: d.category || "CLIENT_DOCUMENT",
+            uploadedBy: d.uploadedByRole || "CLIENT",
             uploadedByName: d.uploadedByName || "Client",
             uploadedAt: d.createdAt instanceof Date ? d.createdAt.toISOString() : new Date(d.createdAt).toISOString(),
           })),
@@ -469,15 +481,12 @@ router.get("/lawyer/cases", async (req, res): Promise<void> => {
           const docs = await db!.select().from(caseDocumentsTable).where(eq(caseDocumentsTable.caseId, c.id));
           const messages = await db!.select().from(caseMessagesTable).where(eq(caseMessagesTable.caseId, c.id));
           const notes = await db!.select().from(caseNotesTable).where(eq(caseNotesTable.caseId, c.id));
+          const appts = await db!.select().from(appointmentsTable).where(eq(appointmentsTable.lawyerId, userId));
+          const caseAppts = appts.filter((a) => a.caseId === c.id || a.caseId === null);
 
           return {
             caseId: c.caseRef,
-            caseTitle: c.title,
-            category: c.category,
-            currentStatus: c.status,
-            statusLabel: c.status.replace(/_/g, " "),
-            progress: c.progress,
-            nextStep: c.nextStep || "Matter under active review",
+            caseNumber: c.caseRef,
             client: {
               clientId: String(client?.id || c.clientId),
               name: client?.fullName || "Client",
@@ -485,31 +494,98 @@ router.get("/lawyer/cases", async (req, res): Promise<void> => {
               phone: "+91 98765 43210",
               location: "India",
             },
-            documents: docs.map((d) => ({
+            lawyerId: String(c.lawyerId || userId),
+            caseTitle: c.title,
+            caseCategory: c.category,
+            category: c.category,
+            description: c.description || "",
+            oppositeParty: c.oppositeParty || "Opposing Party",
+            location: "District Court, New Delhi",
+            currentStatus: c.status,
+            statusLabel: c.status.replace(/_/g, " "),
+            progress: c.progress,
+            nextStep: c.nextStep || "Matter under active review",
+            statusHistory: [
+              {
+                id: `SH-${c.id}-1`,
+                previousStatus: "ASSIGNED",
+                newStatus: c.status,
+                changedAt: c.updatedAt.toISOString(),
+                changedBy: String(userId),
+                note: c.nextStep || "Case actively managed",
+              },
+            ],
+            createdAt: c.createdAt.toISOString(),
+            assignedAt: c.createdAt.toISOString(),
+            lastUpdatedAt: c.updatedAt.toISOString(),
+            updatedAt: c.updatedAt.toISOString(),
+            documents: (docs || []).map((d) => ({
               docId: d.docRef,
+              caseId: c.caseRef,
               name: d.name,
-              fileType: d.fileType,
-              fileSize: d.fileSize,
-              category: d.category,
-              uploadedBy: d.uploadedByRole,
+              fileName: d.fileName || `${d.name}.pdf`,
+              fileType: d.fileType || "PDF",
+              fileSize: d.fileSize || "1 MB",
+              category: d.category || "CLIENT_DOCUMENT",
+              uploadedBy: d.uploadedByRole || "CLIENT",
+              uploadedByName: d.uploadedByRole === "LAWYER" ? "You" : client?.fullName || "Client",
               uploadedAt: d.createdAt.toISOString(),
             })),
-            messages: messages.map((m) => ({
+            messages: (messages || []).map((m) => ({
               messageId: String(m.id),
+              caseId: c.caseRef,
+              senderId: String(m.senderUserId),
               senderRole: m.senderRole,
               senderName: m.senderRole === "LAWYER" ? "You" : client?.fullName || "Client",
               text: m.text,
               sentAt: m.createdAt.toISOString(),
               readAt: m.readAt ? m.readAt.toISOString() : undefined,
             })),
-            notes: notes.map((n) => ({
+            notes: (notes || []).map((n) => ({
               noteId: String(n.id),
+              caseId: c.caseRef,
+              lawyerId: String(n.lawyerUserId),
               title: n.title,
               content: n.content,
               isPrivate: n.isPrivate,
               createdAt: n.createdAt.toISOString(),
+              updatedAt: n.updatedAt.toISOString(),
             })),
-            updatedAt: c.updatedAt.toISOString(),
+            appointments: (caseAppts || []).map((a) => ({
+              appointmentId: a.apptRef,
+              caseId: c.caseRef,
+              client: {
+                clientId: String(client?.id || c.clientId),
+                name: client?.fullName || "Client",
+                email: client?.email || "",
+                phone: "+91 98765 43210",
+                location: "India",
+              },
+              type: a.type,
+              date: a.date,
+              time: a.time,
+              fee: a.fee,
+              status: a.status,
+              meetingLink: a.meetingLink || undefined,
+            })),
+            payments: [
+              {
+                paymentId: `PAY-${c.id}`,
+                caseId: c.caseRef,
+                client: {
+                  clientId: String(client?.id || c.clientId),
+                  name: client?.fullName || "Client",
+                  email: client?.email || "",
+                },
+                amount: 1500,
+                platformFee: 150,
+                netAmount: 1350,
+                type: "CONSULTATION" as const,
+                status: "PAID" as const,
+                date: c.createdAt.toISOString(),
+                receiptNumber: `REC-${c.id}-001`,
+              },
+            ],
           };
         }),
       );
@@ -519,15 +595,16 @@ router.get("/lawyer/cases", async (req, res): Promise<void> => {
     const memCases = memoryStore.getCasesByLawyer(userId);
     for (const mc of memCases) {
       if (!result.some((c) => c.caseId === mc.caseRef)) {
-        const memDocs = memoryStore.getDocumentsByCase(mc.id);
+        const memDocs = memoryStore.getDocumentsByCase(mc.caseRef || mc.id);
+        const memNotes = memoryStore.getNotesByCase(mc.caseRef || mc.id);
+        const memMessages = memoryStore.getMessagesByCase(mc.caseRef || mc.id);
+        const memAppts = memoryStore.getAppointmentsByLawyer(userId).filter(
+          (a) => a.caseId === mc.caseRef || a.caseTitle === mc.title
+        );
+
         result.unshift({
           caseId: mc.caseRef,
-          caseTitle: mc.title,
-          category: mc.category,
-          currentStatus: mc.status,
-          statusLabel: mc.status.replace(/_/g, " "),
-          progress: mc.progress,
-          nextStep: mc.nextStep || "Matter under active review",
+          caseNumber: mc.caseRef,
           client: {
             clientId: String(mc.clientId),
             name: mc.clientName,
@@ -535,18 +612,98 @@ router.get("/lawyer/cases", async (req, res): Promise<void> => {
             phone: mc.clientPhone || "+91 98765 43210",
             location: mc.clientLocation || "India",
           },
-          documents: memDocs.map((d) => ({
+          lawyerId: String(mc.lawyerId || userId),
+          caseTitle: mc.title,
+          caseCategory: mc.category,
+          category: mc.category,
+          description: mc.description || "",
+          oppositeParty: mc.oppositeParty || "Opposing Party",
+          location: mc.clientLocation || "District Court, New Delhi",
+          currentStatus: mc.status,
+          statusLabel: mc.status.replace(/_/g, " "),
+          progress: mc.progress,
+          nextStep: mc.nextStep || "Matter under active review",
+          statusHistory: [
+            {
+              id: `SH-${mc.id}-1`,
+              previousStatus: "ASSIGNED",
+              newStatus: mc.status,
+              changedAt: mc.updatedAt instanceof Date ? mc.updatedAt.toISOString() : new Date(mc.updatedAt).toISOString(),
+              changedBy: String(userId),
+              note: mc.nextStep || "Case actively managed",
+            },
+          ],
+          createdAt: mc.createdAt instanceof Date ? mc.createdAt.toISOString() : new Date(mc.createdAt).toISOString(),
+          assignedAt: mc.createdAt instanceof Date ? mc.createdAt.toISOString() : new Date(mc.createdAt).toISOString(),
+          lastUpdatedAt: mc.updatedAt instanceof Date ? mc.updatedAt.toISOString() : new Date(mc.updatedAt).toISOString(),
+          updatedAt: mc.updatedAt instanceof Date ? mc.updatedAt.toISOString() : new Date(mc.updatedAt).toISOString(),
+          documents: (memDocs || []).map((d) => ({
             docId: d.docRef,
+            caseId: mc.caseRef,
             name: d.name,
-            fileType: d.fileType,
-            fileSize: d.fileSize,
-            category: d.category,
-            uploadedBy: d.uploadedByRole,
+            fileName: d.fileName || `${d.name}.pdf`,
+            fileType: d.fileType || "PDF",
+            fileSize: d.fileSize || "1 MB",
+            category: d.category || "CLIENT_DOCUMENT",
+            uploadedBy: d.uploadedByRole || "CLIENT",
+            uploadedByName: d.uploadedByName || "Client",
             uploadedAt: d.createdAt instanceof Date ? d.createdAt.toISOString() : new Date(d.createdAt).toISOString(),
           })),
-          messages: [],
-          notes: [],
-          updatedAt: mc.updatedAt instanceof Date ? mc.updatedAt.toISOString() : new Date(mc.updatedAt).toISOString(),
+          messages: (memMessages || []).map((m) => ({
+            messageId: m.messageId,
+            caseId: mc.caseRef,
+            senderId: m.senderId,
+            senderRole: m.senderRole,
+            senderName: m.senderName,
+            text: m.text,
+            sentAt: m.sentAt instanceof Date ? m.sentAt.toISOString() : new Date(m.sentAt).toISOString(),
+            readAt: m.readAt ? (m.readAt instanceof Date ? m.readAt.toISOString() : new Date(m.readAt).toISOString()) : undefined,
+          })),
+          notes: (memNotes || []).map((n) => ({
+            noteId: n.noteId,
+            caseId: mc.caseRef,
+            lawyerId: n.lawyerId,
+            title: n.title,
+            content: n.content,
+            isPrivate: n.isPrivate ?? true,
+            createdAt: n.createdAt instanceof Date ? n.createdAt.toISOString() : new Date(n.createdAt).toISOString(),
+            updatedAt: n.updatedAt instanceof Date ? n.updatedAt.toISOString() : new Date(n.updatedAt).toISOString(),
+          })),
+          appointments: (memAppts || []).map((a) => ({
+            appointmentId: a.apptRef,
+            caseId: mc.caseRef,
+            client: {
+              clientId: String(mc.clientId),
+              name: mc.clientName,
+              email: mc.clientEmail,
+              phone: mc.clientPhone || "+91 98765 43210",
+              location: mc.clientLocation || "India",
+            },
+            type: a.type,
+            date: a.date,
+            time: a.time,
+            fee: a.fee,
+            status: a.status,
+            meetingLink: a.meetingLink || undefined,
+          })),
+          payments: [
+            {
+              paymentId: `PAY-${mc.id}`,
+              caseId: mc.caseRef,
+              client: {
+                clientId: String(mc.clientId),
+                name: mc.clientName,
+                email: mc.clientEmail,
+              },
+              amount: 1500,
+              platformFee: 150,
+              netAmount: 1350,
+              type: "CONSULTATION" as const,
+              status: "PAID" as const,
+              date: mc.createdAt instanceof Date ? mc.createdAt.toISOString() : new Date(mc.createdAt).toISOString(),
+              receiptNumber: `REC-${mc.id}-001`,
+            },
+          ],
         });
       }
     }
@@ -689,46 +846,132 @@ router.post("/lawyer/cases/:id/messages", async (req, res): Promise<void> => {
     const userId = req.auth!.id;
     const caseRef = req.params.id;
     const { text } = req.body as { text: string };
+    const { memoryStore } = await import("../lib/memoryStore");
 
     if (!text || !text.trim()) {
       res.status(400).json({ error: "Message text is required" });
       return;
     }
 
-    if (!db) {
-      res.json({ messageId: String(Date.now()), text, sentAt: new Date().toISOString() });
-      return;
+    const lawyerProfile = memoryStore.getLawyerProfileByUserId(userId);
+    const lawyerUser = memoryStore.getUserById(userId);
+    const lawyerName = lawyerProfile?.fullName || lawyerUser?.fullName || "Advocate";
+
+    const memMsg = memoryStore.addMessage({
+      id: Date.now(),
+      messageId: `MSG-${Date.now()}`,
+      caseId: caseRef,
+      senderId: String(userId),
+      senderRole: "LAWYER",
+      senderName: lawyerName,
+      text: text.trim(),
+      sentAt: new Date(),
+    });
+
+    if (db) {
+      const [c] = await db.select().from(casesTable).where(eq(casesTable.caseRef, caseRef)).limit(1);
+      if (c) {
+        await db
+          .insert(caseMessagesTable)
+          .values({
+            caseId: c.id,
+            senderUserId: userId,
+            senderRole: "LAWYER",
+            text: text.trim(),
+          });
+
+        const [lawyer] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+        await notify.newMessage(c.clientId, lawyer?.fullName || "Your lawyer", c.title, c.id);
+      }
     }
-
-    const [c] = await db.select().from(casesTable).where(eq(casesTable.caseRef, caseRef)).limit(1);
-    if (!c) {
-      res.status(404).json({ error: "Case not found" });
-      return;
-    }
-
-    const [msg] = await db
-      .insert(caseMessagesTable)
-      .values({
-        caseId: c.id,
-        senderUserId: userId,
-        senderRole: "LAWYER",
-        text: text.trim(),
-      })
-      .returning();
-
-    const [lawyer] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-    await notify.newMessage(c.clientId, lawyer?.fullName || "Your lawyer", c.title, c.id);
 
     res.json({
-      messageId: String(msg.id),
+      messageId: memMsg.messageId,
+      caseId: caseRef,
       senderRole: "LAWYER",
-      senderName: lawyer?.fullName || "You",
-      text: msg.text,
-      sentAt: msg.createdAt.toISOString(),
+      senderName: lawyerName,
+      text: memMsg.text,
+      sentAt: memMsg.sentAt.toISOString(),
     });
   } catch (error) {
     console.error("Error in POST /lawyer/cases/:id/messages:", error);
     res.status(500).json({ error: "Failed to send message" });
+  }
+});
+
+// ─── Private Notes ────────────────────────────────────────────────────────────
+router.post("/lawyer/cases/:id/notes", async (req, res): Promise<void> => {
+  try {
+    const userId = req.auth!.id;
+    const caseRef = req.params.id;
+    const { title, content } = req.body as { title: string; content: string };
+    const { memoryStore } = await import("../lib/memoryStore");
+
+    if (!title || !content) {
+      res.status(400).json({ error: "Title and content are required" });
+      return;
+    }
+
+    const noteId = `NOTE-${Date.now()}`;
+    const newNote = memoryStore.addNote({
+      id: Date.now(),
+      noteId,
+      caseId: caseRef,
+      lawyerId: String(userId),
+      title,
+      content,
+      isPrivate: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    if (db) {
+      const [c] = await db.select().from(casesTable).where(eq(casesTable.caseRef, caseRef)).limit(1);
+      if (c) {
+        await db.insert(caseNotesTable).values({
+          caseId: c.id,
+          lawyerUserId: userId,
+          title,
+          content,
+          isPrivate: true,
+        });
+      }
+    }
+
+    res.status(201).json({
+      noteId: newNote.noteId,
+      caseId: caseRef,
+      title: newNote.title,
+      content: newNote.content,
+      isPrivate: newNote.isPrivate,
+      createdAt: newNote.createdAt.toISOString(),
+      updatedAt: newNote.updatedAt.toISOString(),
+    });
+  } catch (error) {
+    console.error("Error in POST /lawyer/cases/:id/notes:", error);
+    res.status(500).json({ error: "Failed to create note" });
+  }
+});
+
+router.delete("/lawyer/cases/:id/notes/:noteId", async (req, res): Promise<void> => {
+  try {
+    const caseRef = req.params.id;
+    const noteId = req.params.noteId;
+    const { memoryStore } = await import("../lib/memoryStore");
+
+    memoryStore.deleteNote(caseRef, noteId);
+
+    if (db) {
+      const numId = Number(noteId.replace(/\D/g, ""));
+      if (numId) {
+        await db.delete(caseNotesTable).where(eq(caseNotesTable.id, numId));
+      }
+    }
+
+    res.json({ success: true, message: "Note deleted" });
+  } catch (error) {
+    console.error("Error in DELETE /lawyer/cases/:id/notes/:noteId:", error);
+    res.status(500).json({ error: "Failed to delete note" });
   }
 });
 

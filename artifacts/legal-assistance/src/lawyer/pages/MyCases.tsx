@@ -9,9 +9,12 @@ function formatDate(iso: string) {
 }
 
 const STATUS_LABEL: Record<string, string> = {
+  ACTIVE: 'Active',
   ASSIGNED: 'Assigned',
+  PENDING_LAWYER: 'Pending Lawyer',
   CONSULTATION_SCHEDULED: 'Consultation Scheduled',
   DOCUMENTS_PENDING: 'Documents Pending',
+  DOCUMENTS_UPLOADED: 'Documents Uploaded',
   UNDER_REVIEW: 'Under Review',
   LEGAL_NOTICE: 'Legal Notice',
   COURT_FILING: 'Court Filing',
@@ -21,9 +24,12 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const STATUS_PILL: Record<string, string> = {
+  ACTIVE: 'lp-pill-teal',
   ASSIGNED: 'lp-pill-teal',
+  PENDING_LAWYER: 'lp-pill-gold',
   CONSULTATION_SCHEDULED: 'lp-pill-teal',
   DOCUMENTS_PENDING: 'lp-pill-gold',
+  DOCUMENTS_UPLOADED: 'lp-pill-gold',
   UNDER_REVIEW: 'lp-pill-gold',
   LEGAL_NOTICE: 'lp-pill-navy',
   COURT_FILING: 'lp-pill-navy',
@@ -35,8 +41,8 @@ const STATUS_PILL: Record<string, string> = {
 type TabId = 'active' | 'pending' | 'completed' | 'closed';
 
 const TAB_FILTER: Record<TabId, (c: LawyerCase) => boolean> = {
-  active: c => ['ASSIGNED', 'CONSULTATION_SCHEDULED', 'UNDER_REVIEW', 'LEGAL_NOTICE', 'COURT_FILING', 'HEARING'].includes(c.currentStatus),
-  pending: c => c.currentStatus === 'DOCUMENTS_PENDING',
+  active: c => ['ACTIVE', 'ASSIGNED', 'CONSULTATION_SCHEDULED', 'DOCUMENTS_UPLOADED', 'UNDER_REVIEW', 'LEGAL_NOTICE', 'COURT_FILING', 'HEARING'].includes(c.currentStatus),
+  pending: c => c.currentStatus === 'DOCUMENTS_PENDING' || c.currentStatus === 'PENDING_LAWYER',
   completed: c => c.currentStatus === 'RESOLVED',
   closed: c => c.currentStatus === 'CLOSED',
 };
@@ -123,7 +129,15 @@ export function MyCases({ onOpenCase }: { onOpenCase: (caseId: string) => void }
 }
 
 function CaseCard({ c, onOpen }: { c: LawyerCase; onOpen: () => void }) {
-  const msgCount = c.messages.filter(m => m.senderRole === 'CLIENT' && !m.readAt).length;
+  const messages = c.messages || [];
+  const msgCount = messages.filter(m => m.senderRole === 'CLIENT' && !m.readAt).length;
+  const docs = c.documents || [];
+  const clientName = c.client?.name || 'Client';
+  const oppositeParty = c.oppositeParty || 'Opposing Party';
+  const category = c.caseCategory || c.category || 'General';
+  const updatedDate = c.lastUpdatedAt || c.updatedAt || new Date().toISOString();
+  const statusLabel = STATUS_LABEL[c.currentStatus] || c.statusLabel || c.currentStatus;
+  const statusPill = STATUS_PILL[c.currentStatus] || 'lp-pill-teal';
 
   return (
     <div className="lp-case-card" onClick={onOpen} role="button">
@@ -134,8 +148,8 @@ function CaseCard({ c, onOpen }: { c: LawyerCase; onOpen: () => void }) {
         <div className="lp-case-info">
           <div className="lp-case-meta">
             <code className="lp-mono lp-mono-sm">{c.caseId}</code>
-            <span className={cx('lp-pill', STATUS_PILL[c.currentStatus])}>
-              {STATUS_LABEL[c.currentStatus]}
+            <span className={cx('lp-pill', statusPill)}>
+              {statusLabel}
             </span>
             {msgCount > 0 && (
               <span className="lp-badge">{msgCount} new</span>
@@ -143,11 +157,11 @@ function CaseCard({ c, onOpen }: { c: LawyerCase; onOpen: () => void }) {
           </div>
           <h3 className="lp-case-title">{c.caseTitle}</h3>
           <div className="lp-case-details">
-            <span>👤 {c.client.name}</span>
-            <span>⚖️ vs. {c.oppositeParty}</span>
-            <span>📁 {c.caseCategory}</span>
-            <span>📄 {c.documents.length} docs</span>
-            <span>🗓 Updated {formatDate(c.lastUpdatedAt)}</span>
+            <span>👤 {clientName}</span>
+            <span>⚖️ vs. {oppositeParty}</span>
+            <span>📁 {category}</span>
+            <span>📄 {docs.length} docs</span>
+            <span>🗓 Updated {formatDate(updatedDate)}</span>
           </div>
         </div>
       </div>

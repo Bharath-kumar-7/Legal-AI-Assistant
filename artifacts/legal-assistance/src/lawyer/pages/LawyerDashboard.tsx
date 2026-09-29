@@ -25,9 +25,12 @@ function formatTimeAgo(iso: string) {
 }
 
 const STATUS_COLORS: Record<string, string> = {
+  ACTIVE: 'teal',
   ASSIGNED: 'teal',
+  PENDING_LAWYER: 'gold',
   CONSULTATION_SCHEDULED: 'teal',
   DOCUMENTS_PENDING: 'gold',
+  DOCUMENTS_UPLOADED: 'gold',
   UNDER_REVIEW: 'gold',
   LEGAL_NOTICE: 'navy',
   COURT_FILING: 'navy',
@@ -37,9 +40,12 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
+  ACTIVE: 'Active',
   ASSIGNED: 'Assigned',
+  PENDING_LAWYER: 'Pending Lawyer',
   CONSULTATION_SCHEDULED: 'Consultation Scheduled',
   DOCUMENTS_PENDING: 'Documents Pending',
+  DOCUMENTS_UPLOADED: 'Documents Uploaded',
   UNDER_REVIEW: 'Under Review',
   LEGAL_NOTICE: 'Legal Notice',
   COURT_FILING: 'Court Filing',
@@ -54,7 +60,7 @@ export function LawyerDashboard({ onNavigate }: { onNavigate: (path: string) => 
   const activeCases = cases.filter(c => !['RESOLVED', 'CLOSED'].includes(c.currentStatus));
   const newRequests = caseRequests.filter(r => r.status === 'PENDING' || r.status === 'INFO_REQUESTED');
   const upcomingAppts = appointments.filter(a => a.status === 'CONFIRMED' || a.status === 'PENDING');
-  const unreadMsgs = cases.reduce((acc, c) => acc + c.messages.filter(m => m.senderRole === 'CLIENT' && !m.readAt).length, 0);
+  const unreadMsgs = cases.reduce((acc, c) => acc + (c.messages || []).filter(m => m.senderRole === 'CLIENT' && !m.readAt).length, 0);
   const unreadNotifs = notifications.filter(n => !n.isRead).length;
 
   const recentRequests = caseRequests.slice(0, 3);
@@ -136,8 +142,8 @@ export function LawyerDashboard({ onNavigate }: { onNavigate: (path: string) => 
                   <div className="lp-list-content">
                     <strong>{req.caseTitle}</strong>
                     <span>
-                      <Users size={13} /> {req.client.name} &nbsp;·&nbsp;
-                      <FileText size={13} /> {req.documents.length} docs &nbsp;·&nbsp;
+                      <Users size={13} /> {req.client?.name || 'Client'} &nbsp;·&nbsp;
+                      <FileText size={13} /> {(req.documents || []).length} docs &nbsp;·&nbsp;
                       {req.caseCategory}
                     </span>
                   </div>
@@ -145,7 +151,7 @@ export function LawyerDashboard({ onNavigate }: { onNavigate: (path: string) => 
                     <span className={cx('lp-pill', req.status === 'PENDING' ? 'lp-pill-gold' : 'lp-pill-teal')}>
                       {req.status === 'INFO_REQUESTED' ? 'Info Requested' : 'Pending'}
                     </span>
-                    <small>{formatTimeAgo(req.requestedAt)}</small>
+                    <small>{formatTimeAgo(req.requestedAt || (req as any).submittedAt || new Date().toISOString())}</small>
                     <button
                       className="lp-btn lp-btn-secondary lp-btn-sm"
                       onClick={() => onNavigate(`/lawyer/requests/${req.requestId}`)}

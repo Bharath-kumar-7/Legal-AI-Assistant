@@ -27,7 +27,7 @@ export function LawyerMessages() {
   };
 
   const unreadForCase = (c: LawyerCase) =>
-    c.messages.filter(m => m.senderRole === 'CLIENT' && !m.readAt).length;
+    (c.messages || []).filter(m => m.senderRole === 'CLIENT' && !m.readAt).length;
 
   return (
     <div className="lp-page">
@@ -47,8 +47,10 @@ export function LawyerMessages() {
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search conversations..." />
           </div>
           {filtered.map(c => {
-            const lastMsg = c.messages[c.messages.length - 1];
+            const msgs = c.messages || [];
+            const lastMsg = msgs[msgs.length - 1];
             const unread = unreadForCase(c);
+            const clientName = c.client?.name || 'Client';
             return (
               <div
                 key={c.caseId}
@@ -57,11 +59,11 @@ export function LawyerMessages() {
                 role="button"
               >
                 <div className="lp-conversation-avatar">
-                  {c.client.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)}
+                  {clientName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)}
                 </div>
                 <div className="lp-conversation-info">
                   <div className="lp-conversation-header">
-                    <strong>{c.client.name}</strong>
+                    <strong>{clientName}</strong>
                     {unread > 0 && <span className="lp-badge">{unread}</span>}
                   </div>
                   <p className="lp-conversation-preview">{lastMsg ? lastMsg.text.substring(0, 50) + (lastMsg.text.length > 50 ? '…' : '') : 'No messages yet'}</p>
@@ -80,23 +82,23 @@ export function LawyerMessages() {
           <div className="lp-chat-window">
             <div className="lp-chat-window-header">
               <div className="lp-conversation-avatar">
-                {selectedCase.client.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)}
+                {(selectedCase.client?.name || 'Client').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)}
               </div>
               <div>
-                <strong>{selectedCase.client.name}</strong>
+                <strong>{selectedCase.client?.name || 'Client'}</strong>
                 <p className="lp-muted">{selectedCase.caseTitle}</p>
               </div>
             </div>
 
             <div className="lp-chat-body lp-chat-body-full">
-              {selectedCase.messages.length === 0 ? (
+              {(selectedCase.messages || []).length === 0 ? (
                 <div className="lp-empty"><MessageSquareText size={24} /><p>No messages yet. Start the conversation.</p></div>
               ) : (
                 <div className="lp-message-list">
-                  {selectedCase.messages.map(msg => (
+                  {(selectedCase.messages || []).map(msg => (
                     <div key={msg.messageId} className={cx('lp-message-row', msg.senderRole === 'LAWYER' && 'lp-message-lawyer')}>
                       <div className="lp-message-avatar">
-                        {msg.senderName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)}
+                        {(msg.senderName || 'User').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)}
                       </div>
                       <div className="lp-message-bubble">
                         <div className="lp-message-meta">

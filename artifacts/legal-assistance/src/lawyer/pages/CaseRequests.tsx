@@ -124,50 +124,58 @@ export function CaseRequests({ onViewRequest }: { onViewRequest: (requestId: str
 }
 
 function CaseRequestCard({ req, onView }: { req: CaseRequest; onView: () => void }) {
+  const requestedAt = req.requestedAt || (req as any).submittedAt || new Date().toISOString();
+  const docs = req.documents || [];
+  const infoReqs = req.infoRequests || [];
+  const clientName = req.client?.name || 'Client';
+  const description = req.description || '';
+  const statusLabel = STATUS_LABEL[req.status] || req.status;
+  const statusPill = STATUS_PILL[req.status] || 'lp-pill-gold';
+
   return (
     <div className="lp-request-card">
       <div className="lp-request-card-header">
         <div className="lp-request-meta">
           <code className="lp-mono">{req.requestId}</code>
-          <span className={cx('lp-pill', STATUS_PILL[req.status])}>{STATUS_LABEL[req.status]}</span>
+          <span className={cx('lp-pill', statusPill)}>{statusLabel}</span>
         </div>
-        <small className="lp-muted">{formatTimeAgo(req.requestedAt)}</small>
+        <small className="lp-muted">{formatTimeAgo(requestedAt)}</small>
       </div>
 
       <h3 className="lp-request-title">{req.caseTitle}</h3>
 
       <div className="lp-request-details">
-        <span><Users size={13} /> <strong>{req.client.name}</strong></span>
+        <span><Users size={13} /> <strong>{clientName}</strong></span>
         <span><FileText size={13} /> {req.caseCategory}</span>
-        <span><Calendar size={13} /> Requested {formatDate(req.requestedAt)}</span>
-        <span><FileText size={13} /> {req.documents.length} documents</span>
+        <span><Calendar size={13} /> Requested {formatDate(requestedAt)}</span>
+        <span><FileText size={13} /> {docs.length} documents</span>
         <span>
           {req.preferredConsultation === 'VIDEO' ? '🎥 Video' : '🏢 Office'} consultation preferred
         </span>
       </div>
 
-      <p className="lp-request-desc">{req.description.substring(0, 180)}…</p>
+      {description && <p className="lp-request-desc">{description.substring(0, 180)}…</p>}
 
-      {req.infoRequests.length > 0 && (
+      {infoReqs.length > 0 && (
         <div className="lp-info-request-banner">
           <MessageSquareText size={14} />
           <span>
             <strong>Info requested</strong> — awaiting client response (
-            {req.infoRequests.filter(i => !i.clientResponse).length} pending)
+            {infoReqs.filter(i => !i.clientResponse).length} pending)
           </span>
         </div>
       )}
 
       <div className="lp-request-card-footer">
         <div className="lp-doc-chips">
-          {req.documents.slice(0, 3).map(d => (
+          {docs.slice(0, 3).map(d => (
             <span key={d.docId} className="lp-doc-chip">
               {d.fileType === 'IMAGE' ? <Image size={12} /> : <File size={12} />}
-              {d.name.length > 20 ? d.name.substring(0, 20) + '…' : d.name}
+              {d.name && d.name.length > 20 ? d.name.substring(0, 20) + '…' : d.name || 'Document'}
             </span>
           ))}
-          {req.documents.length > 3 && (
-            <span className="lp-doc-chip lp-doc-chip-more">+{req.documents.length - 3} more</span>
+          {docs.length > 3 && (
+            <span className="lp-doc-chip lp-doc-chip-more">+{docs.length - 3} more</span>
           )}
         </div>
         <button className="lp-btn lp-btn-primary" onClick={onView}>

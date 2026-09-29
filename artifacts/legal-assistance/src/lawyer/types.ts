@@ -7,9 +7,12 @@ export type CaseRequestStatus = 'PENDING' | 'INFO_REQUESTED' | 'ACCEPTED' | 'REJ
 export type AssignmentStatus = 'REQUESTED' | 'UNDER_REVIEW' | 'ACCEPTED' | 'REJECTED' | 'COMPLETED' | 'CANCELLED';
 
 export type CaseStatus =
+  | 'ACTIVE'
   | 'ASSIGNED'
+  | 'PENDING_LAWYER'
   | 'CONSULTATION_SCHEDULED'
   | 'DOCUMENTS_PENDING'
+  | 'DOCUMENTS_UPLOADED'
   | 'UNDER_REVIEW'
   | 'LEGAL_NOTICE'
   | 'COURT_FILING'
@@ -137,14 +140,19 @@ export interface LawyerCase {
   lawyerId: string;
   caseTitle: string;
   caseCategory: string;
+  category?: string;
   description: string;
   oppositeParty: string;
   location: string;
   currentStatus: CaseStatus;
+  statusLabel?: string;
+  progress?: number;
+  nextStep?: string;
   statusHistory: CaseStatusHistoryEntry[];
   createdAt: string;
   assignedAt: string;
   lastUpdatedAt: string;
+  updatedAt?: string;
   closedAt?: string;
   documents: CaseDocument[];
   notes: LawyerNote[];

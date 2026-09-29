@@ -52,6 +52,13 @@ export function CaseRequestDetail({
   }
 
   const isDecided = req.status === 'ACCEPTED' || req.status === 'REJECTED';
+  const docs = req.documents || [];
+  const requestedAt = req.requestedAt || (req as any).submittedAt || new Date().toISOString();
+  const clientName = req.client?.name || 'Client';
+  const oppositeParty = req.oppositeParty || 'Opposing Party';
+  const location = req.location || 'District Court, New Delhi';
+  const relevantDates = req.relevantDates || 'Immediate / Ongoing';
+  const description = req.description || '';
 
   const handleAccept = () => {
     acceptCaseRequest(req.requestId, conflictConfirmed);
@@ -85,7 +92,7 @@ export function CaseRequestDetail({
           <h1>{req.caseTitle}</h1>
           <p>
             <code className="lp-mono">{req.requestId}</code> &nbsp;·&nbsp;
-            Submitted {formatDate(req.requestedAt)} by {req.client.name}
+            Submitted {formatDate(requestedAt)} by {clientName}
           </p>
         </div>
         <div className="lp-header-status">
@@ -108,7 +115,7 @@ export function CaseRequestDetail({
       <div className="lp-tabs">
         {(['case', 'client', 'documents'] as const).map(t => (
           <button key={t} className={cx('lp-tab', activeTab === t && 'lp-tab-active')} onClick={() => setActiveTab(t)}>
-            {t === 'case' ? 'Case Information' : t === 'client' ? 'Client Details' : `Documents (${req.documents.length})`}
+            {t === 'case' ? 'Case Information' : t === 'client' ? 'Client Details' : `Documents (${docs.length})`}
           </button>
         ))}
       </div>
@@ -126,15 +133,15 @@ export function CaseRequestDetail({
                 </div>
                 <div className="lp-detail-field">
                   <label>Opposite Party</label>
-                  <span>{req.oppositeParty}</span>
+                  <span>{oppositeParty}</span>
                 </div>
                 <div className="lp-detail-field">
                   <label>Location / Jurisdiction</label>
-                  <span><MapPin size={14} /> {req.location}</span>
+                  <span><MapPin size={14} /> {location}</span>
                 </div>
                 <div className="lp-detail-field">
                   <label>Relevant Dates</label>
-                  <span><Calendar size={14} /> {req.relevantDates}</span>
+                  <span><Calendar size={14} /> {relevantDates}</span>
                 </div>
                 <div className="lp-detail-field">
                   <label>Preferred Consultation</label>
@@ -143,7 +150,7 @@ export function CaseRequestDetail({
               </div>
               <div className="lp-detail-field lp-detail-full">
                 <label>Case Description</label>
-                <p className="lp-description-text">{req.description}</p>
+                <p className="lp-description-text">{description}</p>
               </div>
             </div>
           )}
@@ -180,11 +187,11 @@ export function CaseRequestDetail({
           {activeTab === 'documents' && (
             <div className="lp-card">
               <span className="lp-section-kicker">UPLOADED DOCUMENTS</span>
-              {req.documents.length === 0 ? (
+              {docs.length === 0 ? (
                 <div className="lp-empty"><FileText size={24} /><p>No documents uploaded yet.</p></div>
               ) : (
                 <div className="lp-doc-list">
-                  {req.documents.map(doc => (
+                  {docs.map(doc => (
                     <div key={doc.docId} className="lp-doc-row">
                       <div className="lp-doc-icon">
                         {doc.fileType === 'IMAGE' ? <Image size={20} /> : <FileText size={20} />}

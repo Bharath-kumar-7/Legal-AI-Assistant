@@ -465,7 +465,7 @@ export function LawyerProvider({ children }: { children: React.ReactNode }) {
       uploadedAt: new Date().toISOString(),
     };
     setCases(prev =>
-      prev.map(c => c.caseId === caseId ? { ...c, documents: [...c.documents, newDoc], lastUpdatedAt: new Date().toISOString() } : c)
+      prev.map(c => c.caseId === caseId ? { ...c, documents: [...(c.documents || []), newDoc], lastUpdatedAt: new Date().toISOString() } : c)
     );
     appendAudit({
       action: 'DOCUMENT_UPLOADED',
@@ -494,7 +494,7 @@ export function LawyerProvider({ children }: { children: React.ReactNode }) {
     setCases(prev =>
       prev.map(c =>
         c.caseId === caseId
-          ? { ...c, documents: c.documents.filter(d => d.docId !== docId), lastUpdatedAt: new Date().toISOString() }
+          ? { ...c, documents: (c.documents || []).filter(d => d.docId !== docId), lastUpdatedAt: new Date().toISOString() }
           : c
       )
     );
@@ -518,7 +518,7 @@ export function LawyerProvider({ children }: { children: React.ReactNode }) {
       updatedAt: new Date().toISOString(),
     };
     setCases(prev =>
-      prev.map(c => c.caseId === caseId ? { ...c, notes: [...c.notes, newNote] } : c)
+      prev.map(c => c.caseId === caseId ? { ...c, notes: [...(c.notes || []), newNote] } : c)
     );
     appendAudit({
       action: 'NOTE_ADDED',
@@ -527,6 +527,15 @@ export function LawyerProvider({ children }: { children: React.ReactNode }) {
       description: `Added private note "${newNote.title}" to case ${caseId}.`,
     });
     addToast('Note saved.');
+
+    const token = localStorage.getItem('nyaya_token');
+    if (token) {
+      fetch(`/api/lawyer/cases/${caseId}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ title: note.title, content: note.content }),
+      }).catch(() => {});
+    }
   }, [appendAudit, addToast]);
 
   const updateNote = useCallback((caseId: string, noteId: string, updates: Partial<Pick<LawyerNote, 'title' | 'content'>>) => {
@@ -535,7 +544,7 @@ export function LawyerProvider({ children }: { children: React.ReactNode }) {
         c.caseId === caseId
           ? {
               ...c,
-              notes: c.notes.map(n =>
+              notes: (c.notes || []).map(n =>
                 n.noteId === noteId ? { ...n, ...updates, updatedAt: new Date().toISOString() } : n
               ),
             }
@@ -554,7 +563,7 @@ export function LawyerProvider({ children }: { children: React.ReactNode }) {
   const deleteNote = useCallback((caseId: string, noteId: string) => {
     setCases(prev =>
       prev.map(c =>
-        c.caseId === caseId ? { ...c, notes: c.notes.filter(n => n.noteId !== noteId) } : c
+        c.caseId === caseId ? { ...c, notes: (c.notes || []).filter(n => n.noteId !== noteId) } : c
       )
     );
     appendAudit({
@@ -564,6 +573,14 @@ export function LawyerProvider({ children }: { children: React.ReactNode }) {
       description: `Deleted private note ${noteId} from case ${caseId}.`,
     });
     addToast('Note deleted.', 'info');
+
+    const token = localStorage.getItem('nyaya_token');
+    if (token) {
+      fetch(`/api/lawyer/cases/${caseId}/notes/${noteId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
+    }
   }, [appendAudit, addToast]);
 
   // ─── Messages ──────────────────────────────────────────────────────────────
@@ -579,7 +596,7 @@ export function LawyerProvider({ children }: { children: React.ReactNode }) {
       sentAt: new Date().toISOString(),
     };
     setCases(prev =>
-      prev.map(c => c.caseId === caseId ? { ...c, messages: [...c.messages, newMsg], lastUpdatedAt: new Date().toISOString() } : c)
+      prev.map(c => c.caseId === caseId ? { ...c, messages: [...(c.messages || []), newMsg], lastUpdatedAt: new Date().toISOString() } : c)
     );
     appendAudit({
       action: 'MESSAGE_SENT',
@@ -587,6 +604,15 @@ export function LawyerProvider({ children }: { children: React.ReactNode }) {
       entityId: newMsg.messageId,
       description: `Sent message in case ${caseId}.`,
     });
+
+    const token = localStorage.getItem('nyaya_token');
+    if (token) {
+      fetch(`/api/lawyer/cases/${caseId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ text }),
+      }).catch(() => {});
+    }
   }, [profile.userId, profile.fullName, appendAudit]);
 
   // ─── Appointments ──────────────────────────────────────────────────────────

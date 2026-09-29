@@ -18,7 +18,7 @@ export function LawyerDocuments() {
   const [docForm, setDocForm] = useState({ name: '', fileType: 'PDF', category: 'LAWYER_DOCUMENT' as CaseDocument['category'] });
 
   // Collect all documents across all cases
-  const allDocs = cases.flatMap(c => c.documents.map(d => ({ ...d, caseName: c.caseTitle })));
+  const allDocs = cases.flatMap(c => (c.documents || []).map(d => ({ ...d, caseName: c.caseTitle })));
 
   const filtered = allDocs.filter(d => {
     const matchSearch = !search || d.name.toLowerCase().includes(search.toLowerCase()) || (d.caseName || '').toLowerCase().includes(search.toLowerCase());

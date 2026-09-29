@@ -16,13 +16,16 @@ function formatDateTime(iso: string) {
 }
 
 const STATUS_SEQUENCE: CaseStatus[] = [
-  'ASSIGNED', 'CONSULTATION_SCHEDULED', 'DOCUMENTS_PENDING',
-  'UNDER_REVIEW', 'LEGAL_NOTICE', 'COURT_FILING', 'HEARING', 'RESOLVED', 'CLOSED',
+  'ACTIVE', 'ASSIGNED', 'PENDING_LAWYER', 'CONSULTATION_SCHEDULED', 'DOCUMENTS_PENDING',
+  'DOCUMENTS_UPLOADED', 'UNDER_REVIEW', 'LEGAL_NOTICE', 'COURT_FILING', 'HEARING', 'RESOLVED', 'CLOSED',
 ];
 const STATUS_LABEL: Record<string, string> = {
+  ACTIVE: 'Active',
   ASSIGNED: 'Assigned',
+  PENDING_LAWYER: 'Pending Lawyer',
   CONSULTATION_SCHEDULED: 'Consultation Scheduled',
   DOCUMENTS_PENDING: 'Documents Pending',
+  DOCUMENTS_UPLOADED: 'Documents Uploaded',
   UNDER_REVIEW: 'Under Review',
   LEGAL_NOTICE: 'Legal Notice',
   COURT_FILING: 'Court Filing',
@@ -31,9 +34,12 @@ const STATUS_LABEL: Record<string, string> = {
   CLOSED: 'Closed',
 };
 const STATUS_PILL: Record<string, string> = {
+  ACTIVE: 'lp-pill-teal',
   ASSIGNED: 'lp-pill-teal',
+  PENDING_LAWYER: 'lp-pill-gold',
   CONSULTATION_SCHEDULED: 'lp-pill-teal',
   DOCUMENTS_PENDING: 'lp-pill-gold',
+  DOCUMENTS_UPLOADED: 'lp-pill-gold',
   UNDER_REVIEW: 'lp-pill-gold',
   LEGAL_NOTICE: 'lp-pill-navy',
   COURT_FILING: 'lp-pill-navy',
@@ -122,9 +128,25 @@ export function CaseDetail({ caseId, onBack }: { caseId: string; onBack: () => v
     setChatText('');
   };
 
-  const clientDocs = c.documents.filter(d => d.uploadedBy === 'CLIENT');
-  const lawyerDocs = c.documents.filter(d => d.uploadedBy === 'LAWYER');
-  const courtDocs = c.documents.filter(d => d.uploadedBy === 'COURT');
+  const docs = c.documents || [];
+  const notes = c.notes || [];
+  const messages = c.messages || [];
+  const appts = c.appointments || [];
+  const payments = c.payments || [];
+  const statusHistory = c.statusHistory || [];
+
+  const clientDocs = docs.filter(d => d.uploadedBy === 'CLIENT');
+  const lawyerDocs = docs.filter(d => d.uploadedBy === 'LAWYER');
+  const courtDocs = docs.filter(d => d.uploadedBy === 'COURT');
+
+  const clientName = c.client?.name || 'Client';
+  const oppositeParty = c.oppositeParty || 'Opposing Party';
+  const category = c.caseCategory || c.category || 'General';
+  const assignedDate = c.assignedAt || c.createdAt || new Date().toISOString();
+  const lastUpdatedDate = c.lastUpdatedAt || c.updatedAt || new Date().toISOString();
+  const description = c.description || 'Matter under active legal review.';
+  const currentStatusLabel = STATUS_LABEL[c.currentStatus] || c.statusLabel || c.currentStatus;
+  const currentStatusPill = STATUS_PILL[c.currentStatus] || 'lp-pill-teal';
 
   return (
     <div className="lp-page">
@@ -137,11 +159,11 @@ export function CaseDetail({ caseId, onBack }: { caseId: string; onBack: () => v
           <h1>{c.caseTitle}</h1>
           <p>
             <code className="lp-mono">{c.caseId}</code> &nbsp;·&nbsp;
-            {c.client.name} &nbsp;·&nbsp; {c.caseCategory}
+            {clientName} &nbsp;·&nbsp; {category}
           </p>
         </div>
-        <span className={cx('lp-pill lp-pill-lg', STATUS_PILL[c.currentStatus])}>
-          {STATUS_LABEL[c.currentStatus]}
+        <span className={cx('lp-pill lp-pill-lg', currentStatusPill)}>
+          {currentStatusLabel}
         </span>
       </div>
 
@@ -150,11 +172,11 @@ export function CaseDetail({ caseId, onBack }: { caseId: string; onBack: () => v
         {(['overview', 'documents', 'notes', 'chat', 'appointments', 'payments', 'status'] as TabId[]).map(t => (
           <button key={t} className={cx('lp-tab', activeTab === t && 'lp-tab-active')} onClick={() => setActiveTab(t)}>
             {t === 'overview' ? 'Overview'
-              : t === 'documents' ? `Documents (${c.documents.length})`
-              : t === 'notes' ? `Notes (${c.notes.length})`
-              : t === 'chat' ? `Chat (${c.messages.length})`
-              : t === 'appointments' ? `Appointments (${c.appointments.length})`
-              : t === 'payments' ? `Payments (${c.payments.length})`
+              : t === 'documents' ? `Documents (${docs.length})`
+              : t === 'notes' ? `Notes (${notes.length})`
+              : t === 'chat' ? `Chat (${messages.length})`
+              : t === 'appointments' ? `Appointments (${appts.length})`
+              : t === 'payments' ? `Payments (${payments.length})`
               : 'Status'}
           </button>
         ))}
@@ -167,17 +189,17 @@ export function CaseDetail({ caseId, onBack }: { caseId: string; onBack: () => v
             <span className="lp-section-kicker">CASE OVERVIEW</span>
             <div className="lp-detail-grid">
               <div className="lp-detail-field"><label>Case ID</label><code className="lp-mono">{c.caseId}</code></div>
-              <div className="lp-detail-field"><label>Category</label><span className="lp-pill lp-pill-navy">{c.caseCategory}</span></div>
-              <div className="lp-detail-field"><label>Client</label><span>{c.client.name}</span></div>
-              <div className="lp-detail-field"><label>Opposite Party</label><span>{c.oppositeParty}</span></div>
-              <div className="lp-detail-field"><label>Location</label><span>{c.location}</span></div>
-              <div className="lp-detail-field"><label>Assigned</label><span>{formatDate(c.assignedAt)}</span></div>
-              <div className="lp-detail-field"><label>Last Updated</label><span>{formatDate(c.lastUpdatedAt)}</span></div>
+              <div className="lp-detail-field"><label>Category</label><span className="lp-pill lp-pill-navy">{category}</span></div>
+              <div className="lp-detail-field"><label>Client</label><span>{clientName}</span></div>
+              <div className="lp-detail-field"><label>Opposite Party</label><span>{oppositeParty}</span></div>
+              <div className="lp-detail-field"><label>Location</label><span>{c.location || 'District Court, New Delhi'}</span></div>
+              <div className="lp-detail-field"><label>Assigned</label><span>{formatDate(assignedDate)}</span></div>
+              <div className="lp-detail-field"><label>Last Updated</label><span>{formatDate(lastUpdatedDate)}</span></div>
               {c.closedAt && <div className="lp-detail-field"><label>Closed</label><span>{formatDate(c.closedAt)}</span></div>}
             </div>
             <div className="lp-detail-field lp-detail-full">
               <label>Description</label>
-              <p className="lp-description-text">{c.description}</p>
+              <p className="lp-description-text">{description}</p>
             </div>
           </div>
 
@@ -275,7 +297,7 @@ export function CaseDetail({ caseId, onBack }: { caseId: string; onBack: () => v
             )
           ))}
 
-          {c.documents.length === 0 && !showDocUpload && (
+          {docs.length === 0 && !showDocUpload && (
             <div className="lp-empty"><FileText size={24} /><p>No documents yet.</p></div>
           )}
         </div>
@@ -308,11 +330,11 @@ export function CaseDetail({ caseId, onBack }: { caseId: string; onBack: () => v
             </div>
           )}
 
-          {c.notes.length === 0 && !showNoteForm ? (
+          {notes.length === 0 && !showNoteForm ? (
             <div className="lp-empty"><PenLine size={24} /><p>No private notes yet.</p></div>
           ) : (
             <div className="lp-notes-list">
-              {c.notes.map(note => (
+              {notes.map(note => (
                 <div key={note.noteId} className="lp-note-card">
                   <div className="lp-note-header">
                     <h4>{note.title}</h4>
@@ -338,17 +360,17 @@ export function CaseDetail({ caseId, onBack }: { caseId: string; onBack: () => v
       {activeTab === 'chat' && (
         <div className="lp-card lp-chat-card">
           <div className="lp-card-header">
-            <span className="lp-section-kicker">CLIENT CHAT — {c.client.name}</span>
+            <span className="lp-section-kicker">CLIENT CHAT — {clientName}</span>
           </div>
           <div className="lp-chat-body">
-            {c.messages.length === 0 ? (
+            {messages.length === 0 ? (
               <div className="lp-empty"><MessageSquareText size={24} /><p>No messages yet.</p></div>
             ) : (
               <div className="lp-message-list">
-                {c.messages.map(msg => (
+                {messages.map(msg => (
                   <div key={msg.messageId} className={cx('lp-message-row', msg.senderRole === 'LAWYER' && 'lp-message-lawyer')}>
                     <div className="lp-message-avatar">
-                      {msg.senderName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)}
+                      {(msg.senderName || 'User').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)}
                     </div>
                     <div className="lp-message-bubble">
                       <div className="lp-message-meta">
@@ -382,11 +404,11 @@ export function CaseDetail({ caseId, onBack }: { caseId: string; onBack: () => v
       {activeTab === 'appointments' && (
         <div className="lp-card">
           <span className="lp-section-kicker">APPOINTMENTS</span>
-          {c.appointments.length === 0 ? (
+          {appts.length === 0 ? (
             <div className="lp-empty"><Calendar size={24} /><p>No appointments for this case.</p></div>
           ) : (
             <div className="lp-list">
-              {c.appointments.map(a => (
+              {appts.map(a => (
                 <div key={a.appointmentId} className="lp-appt-row">
                   <div className="lp-date-tile">
                     <b>{new Date(a.date).getDate()}</b>
@@ -414,11 +436,11 @@ export function CaseDetail({ caseId, onBack }: { caseId: string; onBack: () => v
       {activeTab === 'payments' && (
         <div className="lp-card">
           <span className="lp-section-kicker">PAYMENTS</span>
-          {c.payments.length === 0 ? (
+          {payments.length === 0 ? (
             <div className="lp-empty"><CreditCard size={24} /><p>No payments for this case.</p></div>
           ) : (
             <div className="lp-list">
-              {c.payments.map(p => (
+              {payments.map(p => (
                 <div key={p.paymentId} className="lp-payment-row">
                   <div className="lp-list-content">
                     <strong>{p.type}</strong>
@@ -449,8 +471,8 @@ export function CaseDetail({ caseId, onBack }: { caseId: string; onBack: () => v
             </div>
             <div className="lp-current-status-display">
               <span>Current Status:</span>
-              <span className={cx('lp-pill lp-pill-lg', STATUS_PILL[c.currentStatus])}>
-                {STATUS_LABEL[c.currentStatus]}
+              <span className={cx('lp-pill lp-pill-lg', currentStatusPill)}>
+                {currentStatusLabel}
               </span>
             </div>
             {showStatusForm && (
@@ -459,7 +481,7 @@ export function CaseDetail({ caseId, onBack }: { caseId: string; onBack: () => v
                   <select value={newStatus} onChange={e => setNewStatus(e.target.value as CaseStatus)} className="lp-select">
                     <option value="">— Select status —</option>
                     {STATUS_SEQUENCE.filter(s => s !== c.currentStatus).map(s => (
-                      <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+                      <option key={s} value={s}>{STATUS_LABEL[s] || s}</option>
                     ))}
                   </select>
                 </label>
@@ -477,15 +499,15 @@ export function CaseDetail({ caseId, onBack }: { caseId: string; onBack: () => v
           </div>
           <div className="lp-card">
             <span className="lp-section-kicker">STATUS HISTORY</span>
-            {c.statusHistory.length === 0 ? (
+            {statusHistory.length === 0 ? (
               <div className="lp-empty"><Clock size={20} /><p>No status changes yet.</p></div>
             ) : (
               <div className="lp-timeline">
-                {[...c.statusHistory].reverse().map(h => (
+                {[...statusHistory].reverse().map(h => (
                   <div key={h.id} className="lp-timeline-item">
                     <div className="lp-timeline-dot lp-dot-done"><CheckCircle2 size={14} /></div>
                     <div className="lp-timeline-content">
-                      <strong>{STATUS_LABEL[h.previousStatus]} → {STATUS_LABEL[h.newStatus]}</strong>
+                      <strong>{(STATUS_LABEL[h.previousStatus] || h.previousStatus)} → {(STATUS_LABEL[h.newStatus] || h.newStatus)}</strong>
                       {h.note && <p>{h.note}</p>}
                       <small>{formatDateTime(h.changedAt)}</small>
                     </div>
