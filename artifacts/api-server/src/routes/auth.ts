@@ -20,6 +20,10 @@ const router: IRouter = Router();
 router.post('/auth/login', async (req, res): Promise<void> => {
   const parsed = LoginBody.safeParse(req.body);
   if (!parsed.success) {
+    if (req.body?.role === 'admin') {
+      res.status(401).json({ error: 'Invalid administrator password or username' });
+      return;
+    }
     res.status(400).json({ error: 'Invalid request' });
     return;
   }
@@ -27,7 +31,7 @@ router.post('/auth/login', async (req, res): Promise<void> => {
   const result = await authenticate(parsed.data.email, parsed.data.password, parsed.data.role);
   if (!result) {
     if (parsed.data.role === 'admin') {
-      res.status(401).json({ error: 'Wrong credentials' });
+      res.status(401).json({ error: 'Invalid administrator password or username' });
       return;
     }
     res.status(404).json({ error: 'No account found with these details. Please create an account first.' });

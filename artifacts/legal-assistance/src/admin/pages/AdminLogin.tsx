@@ -31,14 +31,14 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onSuccess }) => {
       };
 
       if (!response.ok || !result.token || !result.user || result.user.role !== 'admin') {
-        throw new Error('Wrong credentials');
+        throw new Error('Invalid administrator password or username');
       }
 
       localStorage.setItem('nyaya_token', result.token);
       localStorage.setItem('nyaya_user', JSON.stringify(result.user));
       onSuccess(result.user);
     } catch {
-      setError('Wrong credentials');
+      setError('Invalid administrator password or username');
     } finally {
       setPending(false);
     }
@@ -76,7 +76,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onSuccess }) => {
               <Mail size={16} className="input-icon" />
               <input
                 id="admin-email"
-                type="email"
+                type="text"
                 required
                 className="admin-input"
                 placeholder="admin@nyaya.in"
@@ -96,7 +96,6 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onSuccess }) => {
                 id="admin-password"
                 type="password"
                 required
-                minLength={8}
                 className="admin-input"
                 placeholder="••••••••••••"
                 value={password}

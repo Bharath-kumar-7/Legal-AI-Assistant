@@ -107,12 +107,12 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: SessionUser) 
       }
 
       if (role === 'admin') {
-        setError('Wrong credentials');
+        setError('Invalid administrator password or username');
       } else {
         setError(result.error || 'Authentication failed. Please check your credentials.');
       }
     } catch {
-      setError(role === 'admin' ? 'Wrong credentials' : 'Connection error. Please try again.');
+      setError(role === 'admin' ? 'Invalid administrator password or username' : 'Connection error. Please try again.');
     } finally {
       setPending(false);
     }
@@ -190,8 +190,8 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: SessionUser) 
             </div>
             {signup && <label className="auth-field">Full name<input value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Your name" autoComplete="name" data-testid="input-signup-name" /></label>}
             <form onSubmit={submit} className="auth-form">
-              <label className="auth-field">{role === 'admin' ? 'Admin Email / Username' : 'Email address'}<input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder={role === 'admin' ? 'admin@nyaya.in' : 'you@example.com'} autoComplete="email" data-testid="input-auth-email" /></label>
-              <label className="auth-field">Password<input type="password" required minLength={8} value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 8 characters" autoComplete={signup ? 'new-password' : 'current-password'} data-testid="input-auth-password" /></label>
+              <label className="auth-field">{role === 'admin' ? 'Admin Email / Username' : 'Email address'}<input type={role === 'admin' ? 'text' : 'email'} required value={email} onChange={e => setEmail(e.target.value)} placeholder={role === 'admin' ? 'admin@nyaya.in' : 'you@example.com'} autoComplete="email" data-testid="input-auth-email" /></label>
+              <label className="auth-field">Password<input type="password" required minLength={signup ? 8 : undefined} value={password} onChange={e => setPassword(e.target.value)} placeholder={signup ? 'At least 8 characters' : '••••••••••••'} autoComplete={signup ? 'new-password' : 'current-password'} data-testid="input-auth-password" /></label>
               {error && (
                 <div className="auth-error" role="alert" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
