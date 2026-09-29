@@ -76,8 +76,8 @@ router.get("/lawyer/profile", async (req, res): Promise<void> => {
           courtLocations: JSON.stringify(["High Court", "District Court"]),
           languages: JSON.stringify(["English", "Hindi"]),
           bio: "Practicing advocate dedicated to legal advisory and representation.",
-          verificationStatus: "VERIFIED",
-          accountStatus: "ACTIVE",
+          verificationStatus: "PENDING",
+          accountStatus: "PENDING_VERIFICATION",
           location: "New Delhi, India",
         })
         .returning();

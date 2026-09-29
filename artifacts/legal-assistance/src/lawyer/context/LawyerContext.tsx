@@ -15,6 +15,7 @@ import type {
   ToastItem,
   CaseStatus,
   AppointmentStatus,
+  AuditAction,
 } from '../types';
 import {
   initialProfile,
@@ -514,7 +515,7 @@ export function LawyerProvider({ children }: { children: React.ReactNode }) {
     setAppointments(prev =>
       prev.map(a => a.appointmentId === appointmentId ? { ...a, status, updatedAt: new Date().toISOString() } : a)
     );
-    const actionMap: Record<AppointmentStatus, typeof appendAudit extends (e: infer E) => void ? E['action'] : never> = {
+    const actionMap: Record<AppointmentStatus, AuditAction> = {
       CONFIRMED: 'APPOINTMENT_ACCEPTED',
       CANCELLED: 'APPOINTMENT_REJECTED',
       RESCHEDULED: 'APPOINTMENT_RESCHEDULED',

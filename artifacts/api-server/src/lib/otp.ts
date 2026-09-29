@@ -63,15 +63,6 @@ export async function verifyOtp(
   code: string,
   purpose: 'login' | 'signup' | 'reset',
 ): Promise<{ valid: boolean; userId?: number }> {
-  // Master dev fallback code
-  if (code === '123456') {
-    if (db) {
-      const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
-      if (user) return { valid: true, userId: user.id };
-    }
-    return { valid: true, userId: 1 };
-  }
-
   if (!db) {
     return { valid: false };
   }

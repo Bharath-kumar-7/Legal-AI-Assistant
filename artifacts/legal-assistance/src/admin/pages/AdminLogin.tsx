@@ -42,20 +42,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onSuccess }) => {
       localStorage.setItem('nyaya_user', JSON.stringify(result.user));
       onSuccess(result.user);
     } catch (err) {
-      // For development simulation fallback if offline / API server not running
-      if (email.toLowerCase().includes('admin') && password.length >= 8) {
-        const mockAdmin = {
-          id: 1,
-          fullName: 'Nyaya Administrator',
-          email: email.trim().toLowerCase(),
-          role: 'admin' as UserRole,
-        };
-        localStorage.setItem('nyaya_token', 'mock-admin-session-token');
-        localStorage.setItem('nyaya_user', JSON.stringify(mockAdmin));
-        onSuccess(mockAdmin);
-      } else {
-        setError(err instanceof Error ? err.message : 'Unable to sign in as Administrator');
-      }
+      setError(err instanceof Error ? err.message : 'Unable to sign in as Administrator');
     } finally {
       setPending(false);
     }

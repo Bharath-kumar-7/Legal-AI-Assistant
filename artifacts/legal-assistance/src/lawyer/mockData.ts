@@ -59,7 +59,6 @@ export const initialCaseRequests: CaseRequest[] = [
     preferredConsultation: 'VIDEO',
     status: 'ACCEPTED',
     requestedAt: '2026-09-07T10:30:00Z',
-    decidedAt: '2026-09-08T09:00:00Z',
     documents: [
       {
         docId: 'DOC-R001',
@@ -119,10 +118,10 @@ const caseNotes: LawyerNote[] = [
   {
     noteId: 'NOTE-001',
     caseId: 'CASE-10024',
+    lawyerId: '2',
     title: 'Prima Facie Case Strategy',
     content:
       'Clear title confirmed under registered 2018 deed. Recommend serving formal Cease and Desist notice followed by injunction suit before Civil Judge Senior Division if construction persists.',
-    isPrivate: true,
     createdAt: '2026-09-08T12:00:00Z',
     updatedAt: '2026-09-08T12:00:00Z',
   },
@@ -140,19 +139,23 @@ export const initialCases: LawyerCase[] = [
       'Encroachment of 2.5 feet on the north boundary wall of survey number 104 by adjacent resident.',
     oppositeParty: 'Ramesh Kumar (Neighbour)',
     location: 'Pune, Maharashtra',
-    currentStatus: 'ACTIVE',
+    currentStatus: 'UNDER_REVIEW',
     statusHistory: [
       {
-        status: 'ASSIGNED',
+        id: 'SH-001',
+        previousStatus: 'ASSIGNED',
+        newStatus: 'ASSIGNED',
         changedAt: '2026-09-08T09:00:00Z',
         changedBy: 'Adv. Rohan Iyer',
-        notes: 'Case accepted following conflict check.',
+        note: 'Case accepted following conflict check.',
       },
       {
-        status: 'ACTIVE',
+        id: 'SH-002',
+        previousStatus: 'ASSIGNED',
+        newStatus: 'UNDER_REVIEW',
         changedAt: '2026-09-08T12:00:00Z',
         changedBy: 'Adv. Rohan Iyer',
-        notes: 'Notice drafted and review in progress.',
+        note: 'Notice drafted and review in progress.',
       },
     ],
     createdAt: '2026-09-07T10:30:00Z',
@@ -178,6 +181,7 @@ export const initialCases: LawyerCase[] = [
       {
         appointmentId: 'APPT-2026-001',
         caseId: 'CASE-10024',
+        caseTitle: 'Property boundary dispute with neighbour',
         client: clientRahul,
         date: '2026-09-21',
         time: '11:30 AM',
@@ -186,12 +190,14 @@ export const initialCases: LawyerCase[] = [
         fee: 1800,
         meetingLink: 'https://meet.google.com/nya-law-meet',
         createdAt: '2026-09-08T10:00:00Z',
+        updatedAt: '2026-09-08T10:00:00Z',
       },
     ],
     payments: [
       {
         paymentId: 'PAY-2026-001',
         caseId: 'CASE-10024',
+        caseTitle: 'Property boundary dispute with neighbour',
         clientName: 'Rahul Sharma',
         amount: 1800,
         status: 'PAID',
@@ -217,6 +223,7 @@ export const initialAppointments: LawyerAppointment[] = [
     fee: 1800,
     meetingLink: 'https://meet.google.com/nya-law-meet',
     createdAt: '2026-09-08T10:00:00Z',
+    updatedAt: '2026-09-08T10:00:00Z',
   },
 ];
 

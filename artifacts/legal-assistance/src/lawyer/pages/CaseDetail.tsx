@@ -109,7 +109,7 @@ export function CaseDetail({ caseId, onBack }: { caseId: string; onBack: () => v
     if (editingNote) {
       updateNote(c.caseId, editingNote.noteId, noteForm);
     } else {
-      addNote(c.caseId, { ...noteForm, lawyerId: profile.userId });
+      addNote(c.caseId, { ...noteForm, lawyerId: profile.userId, caseId: c.caseId });
     }
     setShowNoteForm(false);
     setEditingNote(null);
