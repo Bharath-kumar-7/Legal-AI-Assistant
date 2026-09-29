@@ -73,6 +73,13 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: SessionUser) 
     setPending(true);
     setError('');
 
+    const cleanEmail = email.trim().toLowerCase();
+    if (role !== 'admin' && (cleanEmail === 'admin@nyaya.in' || cleanEmail === 'admin')) {
+      setError(`No ${role} account found with these details. Admin credentials can only be used on the Administrator login page.`);
+      setPending(false);
+      return;
+    }
+
     try {
       const response = await fetch(`/api/auth/${signup ? 'signup' : 'login'}`, {
         method: 'POST',
@@ -198,7 +205,7 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: SessionUser) 
         {!otpStep && (
           <>
             <div className="role-grid" aria-label="Choose account type">
-              {roleOptions.map(option => <button type="button" key={option.id} className={cx('role-option', role === option.id && 'role-option-active')} onClick={() => { setRole(option.id); setError(''); if (option.id === 'admin') { setSignup(false); setEmail('admin@nyaya.in'); } }} data-testid={`button-role-${option.id}`}><span className="role-icon"><option.icon size={17} /></span><span><b>{option.label}</b><small>{option.note}</small></span>{role === option.id && <CheckCircle2 size={16} />}</button>)}
+              {roleOptions.map(option => <button type="button" key={option.id} className={cx('role-option', role === option.id && 'role-option-active')} onClick={() => { setRole(option.id); setError(''); if (option.id === 'admin') { setSignup(false); setEmail('admin@nyaya.in'); } else if (email === 'admin@nyaya.in' || email === 'admin') { setEmail(''); } }} data-testid={`button-role-${option.id}`}><span className="role-icon"><option.icon size={17} /></span><span><b>{option.label}</b><small>{option.note}</small></span>{role === option.id && <CheckCircle2 size={16} />}</button>)}
             </div>
             {signup && <label className="auth-field">Full name<input value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Your name" autoComplete="name" data-testid="input-signup-name" /></label>}
             <form onSubmit={submit} className="auth-form">
