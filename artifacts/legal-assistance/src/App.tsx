@@ -106,9 +106,13 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: SessionUser) 
         return;
       }
 
-      setError(result.error || 'Authentication failed. Please check your credentials.');
-    } catch (err: any) {
-      setError(err?.message || 'Connection error. Please try again.');
+      if (role === 'admin') {
+        setError('Wrong credentials');
+      } else {
+        setError(result.error || 'Authentication failed. Please check your credentials.');
+      }
+    } catch {
+      setError(role === 'admin' ? 'Wrong credentials' : 'Connection error. Please try again.');
     } finally {
       setPending(false);
     }

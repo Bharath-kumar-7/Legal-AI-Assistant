@@ -27,7 +27,7 @@ router.post('/auth/login', async (req, res): Promise<void> => {
   const result = await authenticate(parsed.data.email, parsed.data.password, parsed.data.role);
   if (!result) {
     if (parsed.data.role === 'admin') {
-      res.status(401).json({ error: 'Invalid administrator password. Use password admin123.' });
+      res.status(401).json({ error: 'Wrong credentials' });
       return;
     }
     res.status(404).json({ error: 'No account found with these details. Please create an account first.' });

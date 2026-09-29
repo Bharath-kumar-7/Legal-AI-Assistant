@@ -30,19 +30,15 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onSuccess }) => {
         error?: string;
       };
 
-      if (!response.ok || !result.token || !result.user) {
-        throw new Error(result.error || 'Invalid administrator credentials');
-      }
-
-      if (result.user.role !== 'admin') {
-        throw new Error('Access denied. Administrator privileges required.');
+      if (!response.ok || !result.token || !result.user || result.user.role !== 'admin') {
+        throw new Error('Wrong credentials');
       }
 
       localStorage.setItem('nyaya_token', result.token);
       localStorage.setItem('nyaya_user', JSON.stringify(result.user));
       onSuccess(result.user);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to sign in as Administrator');
+    } catch {
+      setError('Wrong credentials');
     } finally {
       setPending(false);
     }
